@@ -1,13 +1,14 @@
+%option stack
 %option never-interactive
 %option prefix="widlscannerYY"
 %option reentrant
 %option noyywrap
 %option extra-type="struct widlscannerYY_state *"
 
-
 %{
 
 #include <stdio.h>
+#include <sstream>
 
 #include "message.h"
 #include "entry.h"
@@ -34,6 +35,8 @@ struct widlscannerYY_state
 
     std::shared_ptr<Entry> currentRoot;
     std::string lastComment;
+
+    std::vector<std::string> currentScope;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -42,6 +45,10 @@ std::shared_ptr<Entry> createNamespaceEntry(const char*, const char*);
 static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 #undef YY_INPUT
 #define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
+
+char RuleNum[4];
+void printCurrentState(yyscan_t yyscanner, const char* label);
+//#define YY_USER_ACTION { sprintf(RuleNum, "%d", yy_act); printCurrentState(yyscanner, RuleNum); }
 
 void visitDoxygen(yyscan_t yyscanner, std::string text);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
@@ -55,27 +62,30 @@ void visitConstructor(yyscan_t yyscanner);
 
 %}
 
-%x COMMENT
-%x MODULE
+%x Comment
+%x Module
+%x ModuleBody
+%x InterfaceDef
+%x InterfaceBody
 
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
 
 %%
 
 <INITIAL>{
-    "/**" {
-        BEGIN(COMMENT);
-        yyextra->lastComment = "";
-    }
-
     module {
-        BEGIN(MODULE);
+        yy_push_state(Module, yyscanner);
     }
 }
 
-<COMMENT>{
+<*>"/**" {
+    yyextra->lastComment = "";
+    yy_push_state(Comment, yyscanner);
+}
+
+<Comment>{
     ^[ ]+"*/" {
-        BEGIN(INITIAL);
+        yy_pop_state(yyscanner);
     }
 
     ^[ ]+"*" {
@@ -86,11 +96,57 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
     }
 }
 
-<MODULE>{
+<Module>{
     {IDENTIFIER} {
         visitModule(yyscanner, yytext);
         visitDoxygen(yyscanner, yyextra->lastComment);
+        yyextra->currentScope.push_back(yytext);
+        yy_push_state(ModuleBody, yyscanner);
+    }
+
+    ";" {
+        yy_pop_state(yyscanner);
+        yyextra->currentScope.pop_back();
         BEGIN(INITIAL);
+    }
+
+    .|\n {
+    }
+}
+
+<ModuleBody>{
+    "{" {
+    }
+
+    "}" {
+        yy_pop_state(yyscanner);
+    }
+
+    interface {
+        yy_push_state(InterfaceDef, yyscanner);
+    }
+}
+
+<InterfaceDef>{
+    {IDENTIFIER} {
+        visitInterface(yyscanner, yytext);
+        visitDoxygen(yyscanner, yyextra->lastComment);
+        yyextra->currentScope.push_back(yytext);
+        yy_push_state(InterfaceBody, yyscanner);
+    }
+
+    ";" {
+        yyextra->currentScope.pop_back();
+        yy_pop_state(yyscanner);
+    }
+}
+
+<InterfaceBody>{
+    "{" {
+    }
+
+    "}" {
+        yy_pop_state(yyscanner);
     }
 
     .|\n {
@@ -155,6 +211,19 @@ std::shared_ptr<Entry> createNamespaceEntry(
     return entry;
 }
 
+std::shared_ptr<Entry> createInterfaceEntry(
+    const char* fileName,
+    const char* name) {
+    std::shared_ptr<Entry> entry = std::make_shared<Entry>();
+    entry->type = "interface";
+    entry->fileName = fileName;
+    entry->name = name;
+    entry->section = Entry::CLASS_SEC;
+    entry->lang = SrcLangExt_WebIDL;
+    entry->spec = Entry::Interface;
+    return entry;
+}
+
 void visitDoxygen(yyscan_t yyscanner, std::string text) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto protection = Public;
@@ -174,9 +243,18 @@ void visitDoxygen(yyscan_t yyscanner, std::string text) {
         needsEntry);
 }
 
-void visitModule(yyscan_t yyscanner, std::string interfaceName) {
+std::string getCurrentScope(const std::vector<std::string>& scope) {
+    std::ostringstream oss;
+    for (auto s: scope) {
+        oss << s << "::";
+    }
+    return oss.str();
+}
+
+void visitModule(yyscan_t yyscanner, std::string moduleName) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-    auto entry = createNamespaceEntry(yyextra->fileName, interfaceName.c_str());
+    moduleName = getCurrentScope(yyextra->currentScope) + moduleName;
+    auto entry = createNamespaceEntry(yyextra->fileName, moduleName.c_str());
     Doxygen::docGroup.initGroupInfo(entry.get());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->currentRoot = entry;
@@ -184,6 +262,11 @@ void visitModule(yyscan_t yyscanner, std::string interfaceName) {
 
 void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    interfaceName = getCurrentScope(yyextra->currentScope) + interfaceName;
+    auto entry = createInterfaceEntry(yyextra->fileName, interfaceName.c_str());
+    Doxygen::docGroup.initGroupInfo(entry.get());
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->currentRoot = entry;
 }
 
 void visitTypedef(yyscan_t yyscanner, std::string aliasName) {
@@ -210,6 +293,20 @@ void visitConstructor(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
 
+void printCurrentState(yyscan_t yyscanner, const char* label) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    static const char* stateNames[100];
+#define STATE_ENTRY(StateName) stateNames[StateName] = #StateName;
+    STATE_ENTRY(INITIAL);
+    STATE_ENTRY(Comment);
+    STATE_ENTRY(Module);
+    STATE_ENTRY(ModuleBody);
+    STATE_ENTRY(InterfaceDef);
+    STATE_ENTRY(InterfaceBody);
+#undef STATE_ENTRY
+    printf("%s: <%s>\n", label, stateNames[YYSTATE]);
+}
+
 void WebIDLOutlineParser::parseInput(
     const char *fileName,
     const char *fileBuf,
@@ -232,8 +329,6 @@ void WebIDLOutlineParser::parseInput(
 
     Doxygen::docGroup.enterFile(fileName, 0);
     widlscannerYYlex(p->yyscanner);
-    root->markAsProcessed();
-    root->printDebug();
     Doxygen::docGroup.leaveFile(fileName, yyextra->lineNumber);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);

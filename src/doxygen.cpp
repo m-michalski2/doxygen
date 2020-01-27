@@ -11083,7 +11083,7 @@ void parseInput()
   parseFiles(root);
   g_s.end();
 
-  //root->printDebug();
+  root->printDebug();
 
   /**************************************************************************
    *             Gather information                                         *
