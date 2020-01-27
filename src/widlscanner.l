@@ -43,6 +43,16 @@ static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 #undef YY_INPUT
 #define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
 
+void visitDoxygen(yyscan_t yyscanner, std::string text);
+void visitModule(yyscan_t yyscanner, std::string interfaceName);
+void visitInterface(yyscan_t yyscanner, std::string interfaceName);
+void visitTypedef(yyscan_t yyscanner, std::string aliasName);
+void visitMethod(yyscan_t yyscanner, std::string methodName);
+void visitAttribute(yyscan_t yyscanner, std::string attributeName);
+void visitEnum(yyscan_t yyscanner, std::string enumName);
+void visitExtAttributes(yyscan_t yyscanner);
+void visitConstructor(yyscan_t yyscanner);
+
 %}
 
 %x COMMENT
@@ -56,7 +66,6 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
     "/**" {
         BEGIN(COMMENT);
         yyextra->lastComment = "";
-        //yyextra->lastComment = yytext;
     }
 
     module {
@@ -67,11 +76,9 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
 <COMMENT>{
     ^[ ]+"*/" {
         BEGIN(INITIAL);
-        //yyextra->lastComment += yytext;
     }
 
     ^[ ]+"*" {
-        // ignore
     }
 
     .|\n {
@@ -81,37 +88,16 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
 
 <MODULE>{
     {IDENTIFIER} {
-        auto entry = createNamespaceEntry(yyextra->fileName, yytext);
-        Doxygen::docGroup.initGroupInfo(entry.get());
-        yyextra->currentRoot->moveToSubEntryAndKeep(entry);
-        yyextra->currentRoot = entry;
-
-        auto protection = Public;
-        int position = 0;
-        bool needsEntry = false;
-        yyextra->commentScanner.parseCommentBlock(
-            yyextra->thisParser,
-            yyextra->currentRoot.get(),
-            yyextra->lastComment.c_str(),
-            yyextra->fileName,
-            yyextra->lineNumber,
-            false,
-            false,
-            false,
-            protection,
-            position,
-            needsEntry);
-
+        visitModule(yyscanner, yytext);
+        visitDoxygen(yyscanner, yyextra->lastComment);
         BEGIN(INITIAL);
     }
 
     .|\n {
-        // ignore
     }
 }
 
 . {
-    // ignore
 }
 
 \n {
@@ -169,6 +155,60 @@ std::shared_ptr<Entry> createNamespaceEntry(
     return entry;
 }
 
+void visitDoxygen(yyscan_t yyscanner, std::string text) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto protection = Public;
+    int position = 0;
+    bool needsEntry = false;
+    yyextra->commentScanner.parseCommentBlock(
+        yyextra->thisParser,
+        yyextra->currentRoot.get(),
+        text.c_str(),
+        yyextra->fileName,
+        yyextra->lineNumber,
+        false,
+        false,
+        false,
+        protection,
+        position,
+        needsEntry);
+}
+
+void visitModule(yyscan_t yyscanner, std::string interfaceName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = createNamespaceEntry(yyextra->fileName, interfaceName.c_str());
+    Doxygen::docGroup.initGroupInfo(entry.get());
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->currentRoot = entry;
+}
+
+void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitTypedef(yyscan_t yyscanner, std::string aliasName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitMethod(yyscan_t yyscanner, std::string methodName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitAttribute(yyscan_t yyscanner, std::string attributeName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitEnum(yyscan_t yyscanner, std::string enumName) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitExtAttributes(yyscan_t yyscanner) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
+
+void visitConstructor(yyscan_t yyscanner) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+}
 
 void WebIDLOutlineParser::parseInput(
     const char *fileName,
