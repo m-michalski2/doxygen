@@ -3,6 +3,7 @@
 %option prefix="widlscannerYY"
 %option reentrant
 %option noyywrap
+%option yylineno
 %option extra-type="struct widlscannerYY_state *"
 
 %{
@@ -28,8 +29,6 @@ struct widlscannerYY_state
     CommentScanner commentScanner;
 
     const char* fileName;
-    int lineNumber;
-
     const char* inputString;
     int inputPosition;
 
@@ -107,28 +106,20 @@ ARGLIST \(.*\)
 
 <ExtendedAttributes>{
     "]" {
-        fprintf(stderr, "[WIDL] Parsed Extended Attributes\n");
-        for (auto attr: yyextra->extendedAttributes) {
-            fprintf(stderr, "- %s\n", attr.c_str());
-        }
         yy_pop_state(yyscanner);
     }
 
     "NoInterfaceObject" {
-        fprintf(stderr, "[WIDL] NoInterfaceObject\n");
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     "Constructor"{ARGLIST} {
-        fprintf(stderr, "[WIDL] Constructor\n");
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     "," {
         // ext attr separator
     }
-
-    \n {}
 }
 
 <Module>{
@@ -143,9 +134,6 @@ ARGLIST \(.*\)
         yy_pop_state(yyscanner);
         yyextra->currentScope.pop_back();
         BEGIN(INITIAL);
-    }
-
-    .|\n {
     }
 }
 
@@ -183,16 +171,12 @@ ARGLIST \(.*\)
     "}" {
         yy_pop_state(yyscanner);
     }
-
-    .|\n {
-    }
 }
 
-. {
+<*>. {
 }
 
-\n {
-    yyextra->lineNumber ++;
+<*>\n {
 }
 
 <<EOF>> {
@@ -269,7 +253,7 @@ void visitDoxygen(yyscan_t yyscanner, std::string text) {
         yyextra->currentRoot.get(),
         text.c_str(),
         yyextra->fileName,
-        yyextra->lineNumber,
+        yylineno,
         false,
         false,
         false,
@@ -364,7 +348,7 @@ void WebIDLOutlineParser::parseInput(
 
     Doxygen::docGroup.enterFile(fileName, 0);
     widlscannerYYlex(p->yyscanner);
-    Doxygen::docGroup.leaveFile(fileName, yyextra->lineNumber);
+    Doxygen::docGroup.leaveFile(fileName, yylineno);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);
 }
