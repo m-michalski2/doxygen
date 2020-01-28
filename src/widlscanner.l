@@ -70,6 +70,9 @@ void visitConstructor(yyscan_t yyscanner);
 %x InterfaceBody
 %x ExtendedAttributes
 
+B  [ \t]
+BB [ \t]*
+
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
 ARGLIST \(.*\)
 
@@ -113,7 +116,23 @@ ARGLIST \(.*\)
         yyextra->extendedAttributes.push_back(yytext);
     }
 
-    "Constructor"{ARGLIST} {
+    "Constructor"{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}"="{BB}{IDENTIFIER}{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}"="{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER} {
         yyextra->extendedAttributes.push_back(yytext);
     }
 
@@ -156,6 +175,9 @@ ARGLIST \(.*\)
         visitDoxygen(yyscanner, yyextra->lastComment);
         yyextra->currentScope.push_back(yytext);
         yy_push_state(InterfaceBody, yyscanner);
+    }
+
+    ":"{BB}{{IDENTIFIER} {
     }
 
     ";" {
@@ -322,8 +344,9 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(ModuleBody);
     STATE_ENTRY(InterfaceDef);
     STATE_ENTRY(InterfaceBody);
+    STATE_ENTRY(ExtendedAttributes);
 #undef STATE_ENTRY
-    printf("%s: <%s>\n", label, stateNames[YYSTATE]);
+    fprintf(stderr, "%s: <%s>\n", label, stateNames[YYSTATE]);
 }
 
 void WebIDLOutlineParser::parseInput(
