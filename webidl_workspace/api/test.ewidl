@@ -1,0 +1,25 @@
+#if Version:atLeast("5.0") then
+    /**
+     * \brief Test module.
+     * \version 5.0
+     */
+    module Tizen {
+
+        /**
+         * \brief Hello world interface.
+         * \version 5.0
+         */
+        interface HelloWorld {
+            attribute x, y;
+        };
+
+        /**
+         * \brief Goodbye world interface.
+         * \version 5.0
+         */
+        interface GoodbyeWorld {
+            attribute x, y, z;
+        };
+
+    };
+#end -- #if Version:atLeast("5.0") then
