@@ -61,22 +61,12 @@
 
   <!-- Layout definition for a namespace page -->
   <namespace>
-    <briefdescription visible="no"/>
+    <briefdescription visible="yes" title="Brief"/>
+    <detaileddescription visible="yes" title="Details"/>
     <memberdecl>
-      <nestednamespaces visible="no" title=""/>
-      <classes visible="no" title=""/>
-      <typedefs visible="no" title=""/>
-      <enums visible="no" title=""/>
-      <functions visible="no" title=""/>
-      <variables visible="no" title=""/>
-      <membergroups visible="no"/>
+      <classes visible="yes" title="Classes" />
     </memberdecl>
-    <detaileddescription title=""/>
     <memberdef>
-      <typedefs visible="no" title=""/>
-      <enums visible="no" title=""/>
-      <functions title=""/>
-      <variables visible="no" title=""/>
     </memberdef>
     <authorsection visible="no"/>
   </namespace>
@@ -90,7 +80,7 @@
     <sourcelink visible="no"/>
     <memberdecl>
       <classes visible="no" title=""/>
-      <namespaces visible="yes" title=""/>
+      <namespaces visible="yes" title="Namespaces"/>
       <defines visible="no" title=""/>
       <typedefs visible="no" title=""/>
       <enums visible="no" title=""/>
@@ -114,6 +104,7 @@
     <groupgraph visible="$GROUP_GRAPHS"/>
     <detaileddescription title=" "/>
     <memberdecl>
+      <namespaces visible="yes" title="" />
       <functions visible="no" title=""/>
       <typedefs visible="no" title=""/>
       <defines visible="no" title=""/>
@@ -144,7 +135,7 @@
     <directorygraph visible="no"/>
     <memberdecl>
       <dirs visible="no"/>
-      <files visible="no"/>
+      <files visible="yes"/>
     </memberdecl>
     <detaileddescription title=""/>
   </directory>

@@ -331,6 +331,7 @@ OPTIMIZE_OUTPUT_VHDL   = NO
 
 #ETENSION_MAPPING      = widl=IDL
 EXTENSION_MAPPING      = ewidl=widl
+#EXTENSION_MAPPING      = ewidl=IDL
 
 # If the MARKDOWN_SUPPORT tag is enabled then doxygen pre-processes all comments
 # according to the Markdown format, which allows for more readable
@@ -945,7 +946,8 @@ IMAGE_PATH             =
 # need to set EXTENSION_MAPPING for the extension otherwise the files are not
 # properly processed by doxygen.
 
-INPUT_FILTER           = "{EWIDL_PREPROCESSOR}"
+#INPUT_FILTER           = "{EWIDL_PREPROCESSOR}"
+INPUT_FILTER           = "python3 ../ewidl_parser/main.py -p mobile -v 6.0"
 
 # The FILTER_PATTERNS tag can be used to specify filters on a per file pattern
 # basis. Doxygen will compare the file name with each pattern and apply the
