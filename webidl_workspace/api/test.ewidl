@@ -12,7 +12,8 @@
          */
         [NoInterfaceObject, Constructor(int,int)]
         interface HelloWorld {
-            attribute x, y;
+            attribute x;
+            attribute y;
         };
 
         /**
@@ -23,8 +24,10 @@
             Constructor(int, int),
             Constructor()
         ]
-        interface GoodbyeWorld {
-            attribute x, y, z;
+        interface GoodbyeWorld : HelloWorld {
+            attribute int x;
+            attribute int y;
+            attribute int z;
         };
 
     };
