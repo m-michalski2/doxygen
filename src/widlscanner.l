@@ -37,6 +37,7 @@ struct widlscannerYY_state
     std::string lastComment;
 
     std::vector<std::string> currentScope;
+    std::vector<std::string> extendedAttributes;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -46,6 +47,7 @@ static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 #undef YY_INPUT
 #define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
 
+/* Uncomment YY_USER_ACTION to print start condition for each action */
 char RuleNum[4];
 void printCurrentState(yyscan_t yyscanner, const char* label);
 //#define YY_USER_ACTION { sprintf(RuleNum, "%d", yy_act); printCurrentState(yyscanner, RuleNum); }
@@ -67,8 +69,10 @@ void visitConstructor(yyscan_t yyscanner);
 %x ModuleBody
 %x InterfaceDef
 %x InterfaceBody
+%x ExtendedAttributes
 
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
+ARGLIST \(.*\)
 
 %%
 
@@ -94,6 +98,37 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
     .|\n {
         yyextra->lastComment += yytext;
     }
+}
+
+<INITIAL,ModuleBody>"[" {
+    yy_push_state(ExtendedAttributes, yyscanner);
+    yyextra->extendedAttributes.clear();
+}
+
+<ExtendedAttributes>{
+    "]" {
+        fprintf(stderr, "[WIDL] Parsed Extended Attributes\n");
+        for (auto attr: yyextra->extendedAttributes) {
+            fprintf(stderr, "- %s\n", attr.c_str());
+        }
+        yy_pop_state(yyscanner);
+    }
+
+    "NoInterfaceObject" {
+        fprintf(stderr, "[WIDL] NoInterfaceObject\n");
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    "Constructor"{ARGLIST} {
+        fprintf(stderr, "[WIDL] Constructor\n");
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    "," {
+        // ext attr separator
+    }
+
+    \n {}
 }
 
 <Module>{

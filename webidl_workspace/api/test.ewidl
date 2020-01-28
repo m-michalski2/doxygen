@@ -3,12 +3,14 @@
      * \brief Test module.
      * \version 5.0
      */
+    [Exposed=Window]
     module Tizen {
 
         /**
          * \brief Hello world interface.
          * \version 5.0
          */
+        [NoInterfaceObject, Constructor(int,int)]
         interface HelloWorld {
             attribute x, y;
         };
@@ -17,6 +19,10 @@
          * \brief Goodbye world interface.
          * \version 5.0
          */
+        [
+            Constructor(int, int),
+            Constructor()
+        ]
         interface GoodbyeWorld {
             attribute x, y, z;
         };
