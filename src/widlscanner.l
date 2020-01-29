@@ -3,12 +3,15 @@
 %option prefix="widlscannerYY"
 %option reentrant
 %option noyywrap
+%option yylineno
 %option extra-type="struct widlscannerYY_state *"
 
 %{
 
 #include <stdio.h>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
 
 #include "message.h"
 #include "entry.h"
@@ -28,8 +31,6 @@ struct widlscannerYY_state
     CommentScanner commentScanner;
 
     const char* fileName;
-    int lineNumber;
-
     const char* inputString;
     int inputPosition;
 
@@ -38,6 +39,12 @@ struct widlscannerYY_state
 
     std::vector<std::string> currentScope;
     std::vector<std::string> extendedAttributes;
+
+    std::string baseInterface;
+    std::string interfaceName;
+    std::string interfaceDoc;
+
+    std::vector<std::string> attribute;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -50,7 +57,7 @@ static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 /* Uncomment YY_USER_ACTION to print start condition for each action */
 char RuleNum[4];
 void printCurrentState(yyscan_t yyscanner, const char* label);
-//#define YY_USER_ACTION { sprintf(RuleNum, "%d", yy_act); printCurrentState(yyscanner, RuleNum); }
+//#define YY_USER_ACTION { sprintf(RuleNum, "%d", yylineno); printCurrentState(yyscanner, RuleNum); }
 
 void visitDoxygen(yyscan_t yyscanner, std::string text);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
@@ -70,8 +77,12 @@ void visitConstructor(yyscan_t yyscanner);
 %x InterfaceDef
 %x InterfaceBody
 %x ExtendedAttributes
+%x Attribute
 
-IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]+
+B  [ \t]
+BB [ \t]*
+
+IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]*
 ARGLIST \(.*\)
 
 %%
@@ -107,28 +118,36 @@ ARGLIST \(.*\)
 
 <ExtendedAttributes>{
     "]" {
-        fprintf(stderr, "[WIDL] Parsed Extended Attributes\n");
-        for (auto attr: yyextra->extendedAttributes) {
-            fprintf(stderr, "- %s\n", attr.c_str());
-        }
         yy_pop_state(yyscanner);
     }
 
     "NoInterfaceObject" {
-        fprintf(stderr, "[WIDL] NoInterfaceObject\n");
         yyextra->extendedAttributes.push_back(yytext);
     }
 
-    "Constructor"{ARGLIST} {
-        fprintf(stderr, "[WIDL] Constructor\n");
+    "Constructor"{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}"="{BB}{IDENTIFIER}{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}"="{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER}{BB}{ARGLIST} {
+        yyextra->extendedAttributes.push_back(yytext);
+    }
+
+    {IDENTIFIER} {
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     "," {
         // ext attr separator
     }
-
-    \n {}
 }
 
 <Module>{
@@ -143,9 +162,6 @@ ARGLIST \(.*\)
         yy_pop_state(yyscanner);
         yyextra->currentScope.pop_back();
         BEGIN(INITIAL);
-    }
-
-    .|\n {
     }
 }
 
@@ -164,35 +180,60 @@ ARGLIST \(.*\)
 
 <InterfaceDef>{
     {IDENTIFIER} {
-        visitInterface(yyscanner, yytext);
-        visitDoxygen(yyscanner, yyextra->lastComment);
+        yyextra->interfaceDoc = yyextra->lastComment;
+        yyextra->interfaceName = yytext;
         yyextra->currentScope.push_back(yytext);
+    }
+
+    ":"{BB}{IDENTIFIER} {
+        std::string name = yytext;
+        auto beg = std::find_if(begin(name), end(name), [](char c){ return std::isalnum(c); });
+        yyextra->baseInterface = std::string(beg, name.end());
+        fprintf(stderr, "[WIDL] base(%s) = %s\n", yyextra->interfaceName.c_str(),
+            yyextra->baseInterface.c_str());
+    }
+
+    "{" {
         yy_push_state(InterfaceBody, yyscanner);
     }
 
     ";" {
-        yyextra->currentScope.pop_back();
+        visitInterface(yyscanner, yyextra->interfaceName);
+        visitDoxygen(yyscanner, yyextra->interfaceDoc);
         yy_pop_state(yyscanner);
+
+        yyextra->currentScope.pop_back();
+        yyextra->baseInterface.clear();
+        yyextra->interfaceName.clear();
+        yyextra->interfaceDoc.clear();
     }
 }
 
 <InterfaceBody>{
-    "{" {
-    }
-
     "}" {
         yy_pop_state(yyscanner);
     }
 
-    .|\n {
+    "attribute" {
+        yy_push_state(Attribute, yyscanner);
     }
 }
 
-. {
+<Attribute>{
+    ";" {
+        yyextra->attribute.clear();
+        yy_pop_state(yyscanner);
+    }
+
+    {IDENTIFIER} {
+        yyextra->attribute.push_back(yytext);
+    }
 }
 
-\n {
-    yyextra->lineNumber ++;
+<*>. {
+}
+
+<*>\n {
 }
 
 <<EOF>> {
@@ -248,7 +289,8 @@ std::shared_ptr<Entry> createNamespaceEntry(
 
 std::shared_ptr<Entry> createInterfaceEntry(
     const char* fileName,
-    const char* name) {
+    const char* name,
+    const char* baseInterface) {
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "interface";
     entry->fileName = fileName;
@@ -256,6 +298,9 @@ std::shared_ptr<Entry> createInterfaceEntry(
     entry->section = Entry::CLASS_SEC;
     entry->lang = SrcLangExt_WebIDL;
     entry->spec = Entry::Interface;
+    entry->extends.push_back(
+        BaseInfo(QCString("Tizen::")+baseInterface, Public, Normal)
+    );
     return entry;
 }
 
@@ -269,7 +314,7 @@ void visitDoxygen(yyscan_t yyscanner, std::string text) {
         yyextra->currentRoot.get(),
         text.c_str(),
         yyextra->fileName,
-        yyextra->lineNumber,
+        yylineno,
         false,
         false,
         false,
@@ -297,8 +342,13 @@ void visitModule(yyscan_t yyscanner, std::string moduleName) {
 
 void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-    interfaceName = getCurrentScope(yyextra->currentScope) + interfaceName;
-    auto entry = createInterfaceEntry(yyextra->fileName, interfaceName.c_str());
+    interfaceName = getCurrentScope(yyextra->currentScope);
+    interfaceName.pop_back(); interfaceName.pop_back();
+    auto entry = createInterfaceEntry(
+        yyextra->fileName,
+        interfaceName.c_str(),
+        yyextra->baseInterface.c_str()
+    );
     Doxygen::docGroup.initGroupInfo(entry.get());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->currentRoot = entry;
@@ -338,8 +388,10 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(ModuleBody);
     STATE_ENTRY(InterfaceDef);
     STATE_ENTRY(InterfaceBody);
+    STATE_ENTRY(ExtendedAttributes);
+    STATE_ENTRY(Attribute);
 #undef STATE_ENTRY
-    printf("%s: <%s>\n", label, stateNames[YYSTATE]);
+    fprintf(stderr, "%s: <%s>\n", label, stateNames[YYSTATE]);
 }
 
 void WebIDLOutlineParser::parseInput(
@@ -364,7 +416,7 @@ void WebIDLOutlineParser::parseInput(
 
     Doxygen::docGroup.enterFile(fileName, 0);
     widlscannerYYlex(p->yyscanner);
-    Doxygen::docGroup.leaveFile(fileName, yyextra->lineNumber);
+    Doxygen::docGroup.leaveFile(fileName, yylineno);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);
 }
