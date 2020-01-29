@@ -44,6 +44,10 @@ struct widlscannerYY_state
     std::string interfaceName;
     std::string interfaceDoc;
 
+    std::string enumName;
+    std::string enumDoc;
+    std::map<std::string, std::string> enumValues;
+
     std::vector<std::string> attribute;
 };
 
@@ -59,13 +63,13 @@ char RuleNum[4];
 void printCurrentState(yyscan_t yyscanner, const char* label);
 //#define YY_USER_ACTION { sprintf(RuleNum, "%d", yylineno); printCurrentState(yyscanner, RuleNum); }
 
-void visitDoxygen(yyscan_t yyscanner, std::string text);
+void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root = nullptr);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
 void visitInterface(yyscan_t yyscanner, std::string interfaceName);
 void visitTypedef(yyscan_t yyscanner, std::string aliasName);
 void visitMethod(yyscan_t yyscanner, std::string methodName);
 void visitAttribute(yyscan_t yyscanner, std::string attributeName);
-void visitEnum(yyscan_t yyscanner, std::string enumName);
+void visitEnum(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
 
@@ -76,6 +80,8 @@ void visitConstructor(yyscan_t yyscanner);
 %x ModuleBody
 %x InterfaceDef
 %x InterfaceBody
+%x EnumDef
+%x EnumBody
 %x ExtendedAttributes
 %x Attribute
 
@@ -84,6 +90,7 @@ BB [ \t]*
 
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]*
 ARGLIST \(.*\)
+STRING \"([^\\\"]|\\.)*\"
 
 %%
 
@@ -176,6 +183,46 @@ ARGLIST \(.*\)
     interface {
         yy_push_state(InterfaceDef, yyscanner);
     }
+
+    enum {
+        yy_push_state(EnumDef, yyscanner);
+    }
+}
+
+<EnumDef>{
+    {IDENTIFIER} {
+        yyextra->enumName = yytext;
+        yyextra->enumDoc = yyextra->lastComment;
+        fprintf(stderr, "doc for enum %s is: \n%s\n", yyextra->enumName.c_str(), yyextra->enumDoc.c_str());
+    }
+
+    ";" {
+        visitEnum(yyscanner);
+        visitDoxygen(yyscanner, yyextra->enumDoc);
+        yy_pop_state(yyscanner);
+
+        yyextra->enumName.clear();
+        yyextra->enumValues.clear();
+        yyextra->enumDoc.clear();
+    }
+
+    "{" {
+        yy_push_state(EnumBody, yyscanner);
+    }
+}
+
+<EnumBody>{
+    {STRING} {
+        yyextra->enumValues[yytext] = yyextra->lastComment;
+    }
+
+    "," {
+        /* enum values separator */
+    }
+
+    "}" {
+        yy_pop_state(yyscanner);
+    }
 }
 
 <InterfaceDef>{
@@ -187,10 +234,8 @@ ARGLIST \(.*\)
 
     ":"{BB}{IDENTIFIER} {
         std::string name = yytext;
-        auto beg = std::find_if(begin(name), end(name), [](char c){ return std::isalnum(c); });
+        auto beg = std::find_if(begin(name), end(name), (int(*)(int))std::isalnum);
         yyextra->baseInterface = std::string(beg, name.end());
-        fprintf(stderr, "[WIDL] base(%s) = %s\n", yyextra->interfaceName.c_str(),
-            yyextra->baseInterface.c_str());
     }
 
     "{" {
@@ -298,20 +343,49 @@ std::shared_ptr<Entry> createInterfaceEntry(
     entry->section = Entry::CLASS_SEC;
     entry->lang = SrcLangExt_WebIDL;
     entry->spec = Entry::Interface;
+    entry->proto = TRUE;
     entry->extends.push_back(
-        BaseInfo(QCString("Tizen::")+baseInterface, Public, Normal)
+        BaseInfo(QCString("Tizen::") + baseInterface, Public, Normal)
     );
     return entry;
 }
 
-void visitDoxygen(yyscan_t yyscanner, std::string text) {
+std::shared_ptr<Entry> createEnumEntry(
+    yyscan_t yyscanner,
+    const char* fileName,
+    std::string name,
+    std::map<std::string, std::string> values) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    std::shared_ptr<Entry> entry = std::make_shared<Entry>();
+    entry->type = "enum";
+    entry->fileName = fileName;
+    entry->name = name.c_str();
+    entry->section = Entry::ENUM_SEC;
+    entry->lang = SrcLangExt_WebIDL;
+    entry->spec = Entry::Enum | Entry::Strong;
+    for (auto value: values) {
+        auto ev = std::make_shared<Entry>();
+        ev->type = "@";
+        ev->fileName = fileName;
+        ev->section = Entry::VARIABLE_SEC;
+        ev->lang = SrcLangExt_WebIDL;
+        ev->spec = Entry::Value;
+        ev->name = (name + "::" + value.first).c_str();
+        visitDoxygen(yyscanner, value.second, ev);
+        entry->moveToSubEntryAndKeep(ev);
+    }
+    return entry;
+}
+
+void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    if (root == nullptr) root = yyextra->currentRoot;
     auto protection = Public;
     int position = 0;
     bool needsEntry = false;
     yyextra->commentScanner.parseCommentBlock(
         yyextra->thisParser,
-        yyextra->currentRoot.get(),
+        root.get(),
         text.c_str(),
         yyextra->fileName,
         yylineno,
@@ -366,8 +440,17 @@ void visitAttribute(yyscan_t yyscanner, std::string attributeName) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
 
-void visitEnum(yyscan_t yyscanner, std::string enumName) {
+void visitEnum(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = createEnumEntry(
+        yyscanner,
+        yyextra->fileName,
+        getCurrentScope(yyextra->currentScope) + yyextra->enumName,
+        yyextra->enumValues
+    );
+    Doxygen::docGroup.initGroupInfo(entry.get());
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->currentRoot = entry;
 }
 
 void visitExtAttributes(yyscan_t yyscanner) {
@@ -414,9 +497,9 @@ void WebIDLOutlineParser::parseInput(
     yyextra->inputPosition = 0;
     yyextra->inputString = fileBuf;
 
-    Doxygen::docGroup.enterFile(fileName, 0);
+    //Doxygen::docGroup.enterFile(fileName, 0);
     widlscannerYYlex(p->yyscanner);
-    Doxygen::docGroup.leaveFile(fileName, yylineno);
+    //Doxygen::docGroup.leaveFile(fileName, yylineno);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);
 }

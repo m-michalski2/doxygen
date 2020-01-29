@@ -1,6 +1,10 @@
 #if Version:atLeast("5.0") then
     /**
      * \brief Test module.
+     * 
+     * Longer description of the test module.
+     * This description should be able to span over multiple lines.
+     *
      * \version 5.0
      */
     [Exposed=Window]
@@ -28,6 +32,36 @@
             attribute int x;
             attribute int y;
             attribute int z;
+        };
+
+        /**
+         * \brief Enum representing possible color values.
+         */
+        enum Colors {
+            /**
+             * \brief RGB(255, 0, 0)
+             */
+            "RED",
+            /**
+             * \brief RGB(0, 255, 0)
+             */
+            "GREEN",
+            /**
+             * \brief RGB(0, 0, 255)
+             */
+            "BLUE",
+            /**
+             * \brief RGB(255, 100, 255)
+             */
+            "ORANGE",
+            /**
+             * \brief RGB(0, 200, 200)
+             */
+            "CYAN",
+            /**
+             * \brief RGB(1, 2, 3)
+             */
+            "PURPLE"
         };
 
     };
