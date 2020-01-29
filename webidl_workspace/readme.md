@@ -1,4 +1,8 @@
 
+# Build with debug symbols (for GDB debugging)
+
+    cmake -DCMAKE_BUILD_TYPE=Debug -L ..
+    make && sudo -E make install
 
 # Generate doxygen config for given version and profile
 
