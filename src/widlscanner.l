@@ -55,6 +55,11 @@ struct widlscannerYY_state
     std::string attributeRaises;
 
     std::vector<std::string> typeDef;
+
+    std::string operationName;
+    std::string returnType;
+    std::string operationRaises;
+    std::string operationArgs;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -75,7 +80,7 @@ void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> r
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
 void visitInterface(yyscan_t yyscanner, std::string interfaceName);
 void visitTypedef(yyscan_t yyscanner);
-void visitMethod(yyscan_t yyscanner, std::string methodName);
+void visitOperation(yyscan_t yyscanner);
 void visitEnum(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
@@ -93,6 +98,7 @@ void visitAttribute(yyscan_t yyscanner);
 %x Typedef
 %x ExtendedAttributes
 %x Attribute
+%x Operation
 
 B  [ \t]
 BB [ \t]*
@@ -290,6 +296,30 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->readonlyAttribute = false;
         yy_push_state(Attribute, yyscanner);
     }
+
+    {IDENTIFIER} {
+        yyextra->returnType = yytext;
+        yy_push_state(Operation, yyscanner);
+    }
+}
+
+<Operation>{
+    {IDENTIFIER} {
+        yyextra->operationName = yytext;
+    }
+
+    {ARGLIST} {
+        yyextra->operationArgs = yytext;
+    }
+
+    "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
+        yyextra->operationRaises = yytext;
+    }
+
+    ";" {
+        visitOperation(yyscanner);
+        yy_pop_state(yyscanner);
+    }
 }
 
 <Attribute>{
@@ -484,8 +514,18 @@ void visitTypedef(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitMethod(yyscan_t yyscanner, std::string methodName) {
+void visitOperation(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = std::make_shared<Entry>();
+    entry->section = Entry::FUNCTION_SEC;
+    entry->name = yyextra->operationName.c_str();
+    entry->args = yyextra->operationArgs.c_str();
+    
+    entry->exception = yyextra->operationRaises.c_str();
+    entry->type = yyextra->returnType.c_str();
+    entry->mtype = Method;
+    visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
 void visitAttribute(yyscan_t yyscanner) {
@@ -545,6 +585,7 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(EnumBody);
     STATE_ENTRY(ExtendedAttributes);
     STATE_ENTRY(Attribute);
+    STATE_ENTRY(Operation);
 #undef STATE_ENTRY
     fprintf(stderr, "%s: <%s>\n", label, stateNames[YYSTATE]);
 }
