@@ -53,6 +53,8 @@ struct widlscannerYY_state
     bool readonlyAttribute;
     std::vector<std::string> attribute;
     std::string attributeRaises;
+
+    std::vector<std::string> typeDef;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -72,7 +74,7 @@ void printCurrentState(yyscan_t yyscanner, const char* label);
 void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root = nullptr);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
 void visitInterface(yyscan_t yyscanner, std::string interfaceName);
-void visitTypedef(yyscan_t yyscanner, std::string aliasName);
+void visitTypedef(yyscan_t yyscanner);
 void visitMethod(yyscan_t yyscanner, std::string methodName);
 void visitEnum(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
@@ -88,6 +90,7 @@ void visitAttribute(yyscan_t yyscanner);
 %x InterfaceBody
 %x EnumDef
 %x EnumBody
+%x Typedef
 %x ExtendedAttributes
 %x Attribute
 
@@ -192,6 +195,21 @@ STRING \"([^\\\"]|\\.)*\"
 
     enum {
         yy_push_state(EnumDef, yyscanner);
+    }
+
+    typedef {
+        yy_push_state(Typedef, yyscanner);
+    }
+}
+
+<Typedef>{
+    {IDENTIFIER} {
+        yyextra->typeDef.push_back(yytext);
+    }
+
+    ";" {
+        visitTypedef(yyscanner);
+        yy_pop_state(yyscanner);
     }
 }
 
@@ -447,8 +465,23 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
     yyextra->currentRoot = entry;
 }
 
-void visitTypedef(yyscan_t yyscanner, std::string aliasName) {
+void visitTypedef(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    fprintf(stderr, "[WIDL] typedef: %s\n", yyextra->typeDef.back().c_str());
+    auto entry = std::make_shared<Entry>();
+    entry->section = Entry::VARIABLE_SEC;
+    entry->name = yyextra->typeDef.back().c_str();
+    entry->spec = Entry::Alias;
+    entry->fileName = yyextra->fileName;
+    entry->startLine = yylineno;
+    entry->bodyLine = yylineno;
+    QCString type = "typedef ";
+    for (int i=0; i<yyextra->typeDef.size() - 1; ++i) {
+        type += (yyextra->typeDef[i] + " ").c_str();
+    }
+    entry->type = type;
+    visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
 void visitMethod(yyscan_t yyscanner, std::string methodName) {
