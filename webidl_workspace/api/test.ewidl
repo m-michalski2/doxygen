@@ -23,6 +23,21 @@
         interface HelloWorld {
             attribute x;
             attribute y;
+
+            /**
+             * \brief Say hi to someone.
+             * \param name Name of the person to be greeted.
+             * \code{.cpp}
+             * function main(args) {
+             *  var x = new HelloWorld(10, 20);
+             *  x.sayHi(args[0]);
+             * }
+             * \endcode
+             * \output
+             * Hello, Tizen @ (10, 20).
+             * \endoutput
+             */
+            void sayHi(DOMString name) raises (WebAPIException);
         };
 
         /**
