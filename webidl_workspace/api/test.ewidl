@@ -11,6 +11,11 @@
     module Tizen {
 
         /**
+         * \brief Type alias for testing.
+         */
+        typedef integer TestTypeAlias;
+
+        /**
          * \brief Hello world interface.
          * \version 5.0
          */
