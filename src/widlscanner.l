@@ -50,6 +50,7 @@ struct widlscannerYY_state
     std::string enumDoc;
     std::map<std::string, std::string> enumValues;
 
+    bool readonlyAttribute;
     std::vector<std::string> attribute;
 };
 
@@ -261,7 +262,13 @@ STRING \"([^\\\"]|\\.)*\"
         yy_pop_state(yyscanner);
     }
 
+    "readonly attribute" {
+        yyextra->readonlyAttribute = true;
+        yy_push_state(Attribute, yyscanner);
+    }
+
     "attribute" {
+        yyextra->readonlyAttribute = false;
         yy_push_state(Attribute, yyscanner);
     }
 }
@@ -455,6 +462,9 @@ void visitAttribute(yyscan_t yyscanner) {
         type << yyextra->attribute[i] << " ";
     }
     entry->type = type.str().c_str();
+    if (yyextra->readonlyAttribute) {
+        entry->spec = Entry::Property | Entry::Readonly;
+    }
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
@@ -490,6 +500,8 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(ModuleBody);
     STATE_ENTRY(InterfaceDef);
     STATE_ENTRY(InterfaceBody);
+    STATE_ENTRY(EnumDef);
+    STATE_ENTRY(EnumBody);
     STATE_ENTRY(ExtendedAttributes);
     STATE_ENTRY(Attribute);
 #undef STATE_ENTRY
@@ -501,13 +513,9 @@ void WebIDLOutlineParser::parseInput(
     const char *fileBuf,
     const std::shared_ptr<Entry> &root,
     bool,
-    QStrList&)
-{
+    QStrList&){
     struct yyguts_t *yyg = (struct yyguts_t*)p->yyscanner;
-
     printlex(1, TRUE, __FILE__, fileName);
-
-    fprintf(stderr, "[WIDL] parsing file %s\n", fileName);
 
     yyextra->thisParser = this;
     yyextra->fileName = fileName;
@@ -516,9 +524,9 @@ void WebIDLOutlineParser::parseInput(
     yyextra->inputPosition = 0;
     yyextra->inputString = fileBuf;
 
-    //Doxygen::docGroup.enterFile(fileName, 0);
+    Doxygen::docGroup.enterFile(fileName, 0);
     widlscannerYYlex(p->yyscanner);
-    //Doxygen::docGroup.leaveFile(fileName, yylineno);
+    Doxygen::docGroup.leaveFile(fileName, yylineno);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);
 }

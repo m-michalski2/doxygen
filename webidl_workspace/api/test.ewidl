@@ -29,9 +29,9 @@
             Constructor()
         ]
         interface GoodbyeWorld : HelloWorld {
-            attribute int x;
-            attribute int y;
-            attribute int z;
+            readonly attribute int x;
+            readonly attribute int y;
+            readonly attribute int z;
         };
 
         /**
