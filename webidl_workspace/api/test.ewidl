@@ -69,5 +69,21 @@
             "PURPLE"
         };
 
+
+        /**
+        * \brief Simple Brief of dictionary.
+        * Additional comment 1.
+        * Additional comment 2.
+        */
+        dictionary SimpleDictionary {
+            DOMString attribute1 = asd;
+            (DOMString or double) attribute2;
+            /**
+            * \brief dupa
+            * \version 123
+            */
+            (HelloWorld or int) attrib3 = 1231;
+        };
+
     };
 #end -- #if Version:atLeast("5.0") then

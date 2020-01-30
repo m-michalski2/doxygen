@@ -4086,6 +4086,7 @@ QCString ClassDefImpl::compoundTypeString() const
       case Exception: return "exception";
       case Service:   return "service";
       case Singleton: return "singleton";
+      case Dictionary:return "dictionary";
       default:        return "unknown";
     }
   }
