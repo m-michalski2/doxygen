@@ -35,6 +35,8 @@ struct widlscannerYY_state
     int inputPosition;
 
     std::shared_ptr<Entry> currentRoot;
+    std::shared_ptr<Entry> parent;
+
     std::string lastComment;
 
     std::vector<std::string> currentScope;
@@ -58,20 +60,22 @@ static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 #undef YY_INPUT
 #define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
 
-/* Uncomment YY_USER_ACTION to print start condition for each action */
-char RuleNum[4];
 void printCurrentState(yyscan_t yyscanner, const char* label);
-//#define YY_USER_ACTION { sprintf(RuleNum, "%d", yylineno); printCurrentState(yyscanner, RuleNum); }
+//#define YY_USER_ACTION {                      \
+    static char RuleNum[4];                     \
+    sprintf(RuleNum, "%d", yylineno);           \
+    printCurrentState(yyscanner, RuleNum);      \
+}
 
 void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root = nullptr);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
 void visitInterface(yyscan_t yyscanner, std::string interfaceName);
 void visitTypedef(yyscan_t yyscanner, std::string aliasName);
 void visitMethod(yyscan_t yyscanner, std::string methodName);
-void visitAttribute(yyscan_t yyscanner, std::string attributeName);
 void visitEnum(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
+void visitAttribute(yyscan_t yyscanner);
 
 %}
 
@@ -193,7 +197,6 @@ STRING \"([^\\\"]|\\.)*\"
     {IDENTIFIER} {
         yyextra->enumName = yytext;
         yyextra->enumDoc = yyextra->lastComment;
-        fprintf(stderr, "doc for enum %s is: \n%s\n", yyextra->enumName.c_str(), yyextra->enumDoc.c_str());
     }
 
     ";" {
@@ -230,6 +233,7 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->interfaceDoc = yyextra->lastComment;
         yyextra->interfaceName = yytext;
         yyextra->currentScope.push_back(yytext);
+        visitInterface(yyscanner, yyextra->interfaceName);
     }
 
     ":"{BB}{IDENTIFIER} {
@@ -243,10 +247,8 @@ STRING \"([^\\\"]|\\.)*\"
     }
 
     ";" {
-        visitInterface(yyscanner, yyextra->interfaceName);
-        visitDoxygen(yyscanner, yyextra->interfaceDoc);
         yy_pop_state(yyscanner);
-
+        yyextra->currentRoot = yyextra->parent;
         yyextra->currentScope.pop_back();
         yyextra->baseInterface.clear();
         yyextra->interfaceName.clear();
@@ -266,6 +268,7 @@ STRING \"([^\\\"]|\\.)*\"
 
 <Attribute>{
     ";" {
+        visitAttribute(yyscanner);
         yyextra->attribute.clear();
         yy_pop_state(yyscanner);
     }
@@ -370,7 +373,7 @@ std::shared_ptr<Entry> createEnumEntry(
         ev->section = Entry::VARIABLE_SEC;
         ev->lang = SrcLangExt_WebIDL;
         ev->spec = Entry::Value;
-        ev->name = (name + "::" + value.first).c_str();
+        ev->name = value.first.c_str();
         visitDoxygen(yyscanner, value.second, ev);
         entry->moveToSubEntryAndKeep(ev);
     }
@@ -424,7 +427,9 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
         yyextra->baseInterface.c_str()
     );
     Doxygen::docGroup.initGroupInfo(entry.get());
+    visitDoxygen(yyscanner, yyextra->interfaceDoc, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
 }
 
@@ -436,8 +441,22 @@ void visitMethod(yyscan_t yyscanner, std::string methodName) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
 
-void visitAttribute(yyscan_t yyscanner, std::string attributeName) {
+void visitAttribute(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = std::make_shared<Entry>();
+    entry->section = Entry::VARIABLE_SEC;
+    entry->name = yyextra->attribute.back().c_str();
+    entry->protection = Public;
+    entry->fileName = yyextra->fileName;
+    entry->startLine = yylineno;
+    entry->bodyLine = yylineno;
+    std::ostringstream type;
+    for (size_t i = 0; i < yyextra->attribute.size() - 1; ++i) {
+        type << yyextra->attribute[i] << " ";
+    }
+    entry->type = type.str().c_str();
+    visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
 void visitEnum(yyscan_t yyscanner) {
