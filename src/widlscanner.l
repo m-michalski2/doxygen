@@ -213,6 +213,18 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->typeDef.push_back(yytext);
     }
 
+    "[]" {
+        yyextra->typeDef.push_back(yytext);
+    }
+
+    "?" {
+        yyextra->typeDef.push_back(yytext);
+    }
+
+    "("|")" {
+        yyextra->typeDef.push_back(yytext);
+    }
+
     ";" {
         visitTypedef(yyscanner);
         yy_pop_state(yyscanner);

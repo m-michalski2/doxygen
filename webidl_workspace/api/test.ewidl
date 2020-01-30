@@ -13,7 +13,7 @@
         /**
          * \brief Type alias for testing.
          */
-        typedef integer TestTypeAlias;
+        typedef (optional const integer[]? or HelloWorld) TestTypeAlias;
 
         /**
          * \brief Hello world interface.
@@ -27,6 +27,7 @@
             /**
              * \brief Say hi to someone.
              * \param name Name of the person to be greeted.
+             *
              * \code{.cpp}
              * function main(args) {
              *  var x = new HelloWorld(10, 20);
