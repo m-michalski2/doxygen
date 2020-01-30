@@ -217,16 +217,16 @@ STRING \"([^\\\"]|\\.)*\"
     {IDENTIFIER} {
         yyextra->enumName = yytext;
         yyextra->enumDoc = yyextra->lastComment;
-        visitEnum(yyscanner);
     }
 
     ";" {
-        yyextra->currentRoot = yyextra->parent;
+        visitEnum(yyscanner);
         yy_pop_state(yyscanner);
 
         yyextra->enumName.clear();
         yyextra->enumValues.clear();
         yyextra->enumDoc.clear();
+
     }
 
     "{" {
@@ -521,8 +521,6 @@ void visitEnum(yyscan_t yyscanner) {
     visitDoxygen(yyscanner, yyextra->enumDoc, entry);
     Doxygen::docGroup.initGroupInfo(entry.get());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
-    yyextra->parent = yyextra->currentRoot;
-    yyextra->currentRoot = entry;
 }
 
 void visitExtAttributes(yyscan_t yyscanner) {
