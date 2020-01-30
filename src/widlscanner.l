@@ -52,6 +52,7 @@ struct widlscannerYY_state
 
     bool readonlyAttribute;
     std::vector<std::string> attribute;
+    std::string attributeRaises;
 };
 
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
@@ -198,11 +199,11 @@ STRING \"([^\\\"]|\\.)*\"
     {IDENTIFIER} {
         yyextra->enumName = yytext;
         yyextra->enumDoc = yyextra->lastComment;
+        visitEnum(yyscanner);
     }
 
     ";" {
-        visitEnum(yyscanner);
-        visitDoxygen(yyscanner, yyextra->enumDoc);
+        yyextra->currentRoot = yyextra->parent;
         yy_pop_state(yyscanner);
 
         yyextra->enumName.clear();
@@ -277,11 +278,17 @@ STRING \"([^\\\"]|\\.)*\"
     ";" {
         visitAttribute(yyscanner);
         yyextra->attribute.clear();
+        yyextra->attributeRaises.clear();
+        yyextra->readonlyAttribute = false;
         yy_pop_state(yyscanner);
     }
 
     {IDENTIFIER} {
         yyextra->attribute.push_back(yytext);
+    }
+
+    "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
+        yyextra->attributeRaises = yytext;
     }
 }
 
@@ -465,6 +472,7 @@ void visitAttribute(yyscan_t yyscanner) {
     if (yyextra->readonlyAttribute) {
         entry->spec = Entry::Property | Entry::Readonly;
     }
+    entry->exception = yyextra->attributeRaises.c_str();
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
@@ -477,8 +485,10 @@ void visitEnum(yyscan_t yyscanner) {
         getCurrentScope(yyextra->currentScope) + yyextra->enumName,
         yyextra->enumValues
     );
+    visitDoxygen(yyscanner, yyextra->enumDoc, entry);
     Doxygen::docGroup.initGroupInfo(entry.get());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
 }
 

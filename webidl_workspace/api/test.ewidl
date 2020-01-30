@@ -31,7 +31,7 @@
         interface GoodbyeWorld : HelloWorld {
             readonly attribute int x;
             readonly attribute int y;
-            readonly attribute int z;
+            readonly attribute int z raises (WebAPIException);
         };
 
         /**
