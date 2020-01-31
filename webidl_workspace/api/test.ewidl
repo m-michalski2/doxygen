@@ -19,7 +19,11 @@
          * \brief Hello world interface.
          * \version 5.0
          */
-        [NoInterfaceObject, Constructor(int,int)]
+        [
+            NoInterfaceObject,
+            Constructor(int xx,int yy),
+            Constructor()
+        ]
         interface HelloWorld {
             attribute x;
             attribute y;
@@ -38,7 +42,7 @@
              * Hello, Tizen @ (10, 20).
              * \endoutput
              */
-            void sayHi(DOMString name) raises (WebAPIException);
+            (void or integer[])? sayHi(DOMString name) raises (WebAPIException);
         };
 
         /**

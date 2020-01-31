@@ -45,6 +45,7 @@ struct widlscannerYY_state
     std::string baseInterface;
     std::string interfaceName;
     std::string interfaceDoc;
+    std::vector<std::shared_ptr<Entry>> constructors;
 
     std::string enumName;
     std::string enumDoc;
@@ -69,7 +70,7 @@ static int yyread(yyscan_t yyscanner, char *buf, int max_size);
 #define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
 
 void printCurrentState(yyscan_t yyscanner, const char* label);
-//#define YY_USER_ACTION {                      \
+#define YY_USER_ACTION {                      \
     static char RuleNum[4];                     \
     sprintf(RuleNum, "%d", yylineno);           \
     printCurrentState(yyscanner, RuleNum);      \
@@ -84,6 +85,7 @@ void visitEnum(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
 void visitAttribute(yyscan_t yyscanner);
+std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner);
 
 %}
 
@@ -98,6 +100,7 @@ void visitAttribute(yyscan_t yyscanner);
 %x ExtendedAttributes
 %x Attribute
 %x Operation
+%x Constructor
 
 B  [ \t]
 BB [ \t]*
@@ -135,6 +138,7 @@ STRING \"([^\\\"]|\\.)*\"
 <INITIAL,ModuleBody>"[" {
     yy_push_state(ExtendedAttributes, yyscanner);
     yyextra->extendedAttributes.clear();
+    yyextra->constructors.clear();
 }
 
 <ExtendedAttributes>{
@@ -143,26 +147,38 @@ STRING \"([^\\\"]|\\.)*\"
     }
 
     "NoInterfaceObject" {
-        yyextra->extendedAttributes.push_back(yytext);
-    }
-
-    "Constructor"{BB}{ARGLIST} {
+        fprintf(stderr, "[WIDL] NoINterfaceObject: %s\n", yytext);
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     {IDENTIFIER}{BB}"="{BB}{IDENTIFIER}{BB}{ARGLIST} {
+        fprintf(stderr, "[WIDL] EA Identifier: %s\n", yytext);
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     {IDENTIFIER}{BB}"="{BB}{ARGLIST} {
+        fprintf(stderr, "[WIDL] EA = ARG LIST: %s\n", yytext);
         yyextra->extendedAttributes.push_back(yytext);
     }
 
     {IDENTIFIER}{BB}{ARGLIST} {
-        yyextra->extendedAttributes.push_back(yytext);
+        std::string text = yytext;
+        int pos = text.rfind("Constructor", 0);
+        if (pos == 0) {
+            fprintf(stderr, "[WIDL] Constuctor: %s\n", yytext);
+            yyextra->operation.push_back("Constructor");
+            yyextra->operationArgs = text.substr(pos, text.size() - pos);
+            auto entry = createOperationEntry(yyscanner);
+            yyextra->constructors.push_back(entry);
+        }
+        else {
+            yyextra->extendedAttributes.push_back(yytext);
+            fprintf(stderr, "[WIDL] EA With ARGLIST 2: %s\n", yytext);
+        }
     }
 
     {IDENTIFIER} {
+        fprintf(stderr, "[WIDL] Identifier: %s\n", yytext);
         yyextra->extendedAttributes.push_back(yytext);
     }
 
@@ -314,6 +330,11 @@ STRING \"([^\\\"]|\\.)*\"
     }
 }
 
+<Constructor>{
+    {ARGLIST} {
+    }
+}
+
 <Operation>{
     "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
         yyextra->operationRaises = yytext;
@@ -321,9 +342,6 @@ STRING \"([^\\\"]|\\.)*\"
 
     ";" {
         visitOperation(yyscanner);
-        yyextra->operation.clear();
-        yyextra->operationRaises.clear();
-        yyextra->operationArgs.clear();
         yy_pop_state(yyscanner);
     }
 
@@ -515,6 +533,15 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
+
+    // process extended attributes.
+    for (auto ctor: yyextra->constructors) {
+        fprintf(stderr, "adding constructor to %s\n", yyextra->currentRoot->name);
+        ctor->name = yyextra->currentRoot->name;
+        yyextra->currentRoot->moveToSubEntryAndKeep(ctor);
+    }
+
+    yyextra->constructors.clear();
 }
 
 void visitTypedef(yyscan_t yyscanner) {
@@ -535,7 +562,7 @@ void visitTypedef(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitOperation(yyscan_t yyscanner) {
+std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::FUNCTION_SEC;
@@ -549,6 +576,15 @@ void visitOperation(yyscan_t yyscanner) {
     entry->type = returnType.str().c_str();
     entry->mtype = Method;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->operation.clear();
+    yyextra->operationArgs.clear();
+    yyextra->operationRaises.clear();
+    return entry;
+}
+
+void visitOperation(yyscan_t yyscanner) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = createOperationEntry(yyscanner);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
@@ -610,6 +646,8 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(ExtendedAttributes);
     STATE_ENTRY(Attribute);
     STATE_ENTRY(Operation);
+    STATE_ENTRY(Constructor);
+    STATE_ENTRY(Typedef);
 #undef STATE_ENTRY
     fprintf(stderr, "%s: <%s>\n", label, stateNames[YYSTATE]);
 }
