@@ -56,8 +56,7 @@ struct widlscannerYY_state
 
     std::vector<std::string> typeDef;
 
-    std::string operationName;
-    std::string returnType;
+    std::vector<std::string> operation;
     std::string operationRaises;
     std::string operationArgs;
 };
@@ -309,29 +308,40 @@ STRING \"([^\\\"]|\\.)*\"
         yy_push_state(Attribute, yyscanner);
     }
 
-    {IDENTIFIER} {
-        yyextra->returnType = yytext;
+    {IDENTIFIER}|"(" {
+        yyextra->operation.push_back(yytext);
         yy_push_state(Operation, yyscanner);
     }
 }
 
 <Operation>{
-    {IDENTIFIER} {
-        yyextra->operationName = yytext;
-    }
-
-    {ARGLIST} {
-        yyextra->operationArgs = yytext;
-    }
-
     "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
         yyextra->operationRaises = yytext;
     }
 
     ";" {
         visitOperation(yyscanner);
+        yyextra->operation.clear();
+        yyextra->operationRaises.clear();
+        yyextra->operationArgs.clear();
         yy_pop_state(yyscanner);
     }
+
+    {ARGLIST} {
+        // if (...) are encountered at the beginning of operation definition
+        // they represent union type rather than argument list.
+        if (yyextra->operation.empty()) {
+            yyextra->operation.push_back(yytext);
+        }
+        else {
+            yyextra->operationArgs = yytext;
+        }
+    }
+
+    {IDENTIFIER}|"[]"|"?"|")"|"(" {
+        yyextra->operation.push_back(yytext);
+    }
+
 }
 
 <Attribute>{
@@ -509,7 +519,6 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
 
 void visitTypedef(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-    fprintf(stderr, "[WIDL] typedef: %s\n", yyextra->typeDef.back().c_str());
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
     entry->name = yyextra->typeDef.back().c_str();
@@ -530,11 +539,14 @@ void visitOperation(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::FUNCTION_SEC;
-    entry->name = yyextra->operationName.c_str();
+    entry->name = yyextra->operation.back().c_str();
     entry->args = yyextra->operationArgs.c_str();
-    
     entry->exception = yyextra->operationRaises.c_str();
-    entry->type = yyextra->returnType.c_str();
+    std::ostringstream returnType;
+    for (size_t i=0; i<yyextra->operation.size() - 1; ++i) {
+        returnType << yyextra->operation[i] << " ";
+    }
+    entry->type = returnType.str().c_str();
     entry->mtype = Method;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
