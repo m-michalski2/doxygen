@@ -261,9 +261,9 @@ TAB_SIZE               = 4
 # commands \{ and \} for these it is advised to use the version @{ and @} or use
 # a double escape (\\{ and \\})
 
-ALIASES                = "privilege=\par Privilege:\n" \
-                         "privilegelevel=\par Privilege Level:\n" \
-                         "def_api_feature=\attention <b>Related Features:</b> \n"\
+ALIASES                = "privilege=\par Privilege:" \
+                         "privilegelevel=\par Privilege Level:" \
+                         "def_api_feature=\attention <b>Related Features:</b>" \
                          "output=\verbatim" \
                          "endoutput=\endverbatim"
 

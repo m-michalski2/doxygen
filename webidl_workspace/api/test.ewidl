@@ -13,16 +13,36 @@
         /**
          * \brief Type alias for testing.
          */
-        typedef integer TestTypeAlias;
+        typedef (optional const integer[]? or HelloWorld) TestTypeAlias;
 
         /**
          * \brief Hello world interface.
          * \version 5.0
          */
-        [NoInterfaceObject, Constructor(int,int)]
+        [
+            NoInterfaceObject,
+            Constructor(int xx,int yy),
+            Constructor()
+        ]
         interface HelloWorld {
             attribute x;
             attribute y;
+
+            /**
+             * \brief Say hi to someone.
+             * \param name Name of the person to be greeted.
+             *
+             * \code{.cpp}
+             * function main(args) {
+             *  var x = new HelloWorld(10, 20);
+             *  x.sayHi(args[0]);
+             * }
+             * \endcode
+             * \output
+             * Hello, Tizen @ (10, 20).
+             * \endoutput
+             */
+            (void or integer[])? sayHi(DOMString name) raises (WebAPIException);
         };
 
         /**
