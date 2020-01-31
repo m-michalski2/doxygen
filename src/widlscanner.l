@@ -51,9 +51,13 @@ struct widlscannerYY_state
     std::string enumDoc;
     std::map<std::string, std::string> enumValues;
 
+    std::string dictName;
+    std::string dictDoc;
+
     bool readonlyAttribute;
     std::vector<std::string> attribute;
     std::string attributeRaises;
+    std::string defaultVal;
 
     std::vector<std::string> typeDef;
 
@@ -82,6 +86,7 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName);
 void visitTypedef(yyscan_t yyscanner);
 void visitOperation(yyscan_t yyscanner);
 void visitEnum(yyscan_t yyscanner);
+void visitDictionary(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
 void visitAttribute(yyscan_t yyscanner);
@@ -99,6 +104,8 @@ std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner);
 %x Typedef
 %x ExtendedAttributes
 %x Attribute
+%x DictionaryDef
+%x DictionaryBody
 %x Operation
 %x Constructor
 
@@ -220,6 +227,10 @@ STRING \"([^\\\"]|\\.)*\"
 
     typedef {
         yy_push_state(Typedef, yyscanner);
+    }
+
+    dictionary {
+        yy_push_state(DictionaryDef, yyscanner);
     }
 }
 
@@ -368,15 +379,52 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->attribute.clear();
         yyextra->attributeRaises.clear();
         yyextra->readonlyAttribute = false;
+        yyextra->lastComment.clear();
+        yyextra->defaultVal.clear();
         yy_pop_state(yyscanner);
     }
 
-    {IDENTIFIER} {
+    {IDENTIFIER}|"[]"|"?"|"("|")" {
         yyextra->attribute.push_back(yytext);
+    }
+
+    "="[^;]+ {
+        yyextra->defaultVal = yytext;
     }
 
     "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
         yyextra->attributeRaises = yytext;
+    }
+}
+
+<DictionaryDef>{
+    {IDENTIFIER} {
+        yyextra->dictName = yytext;
+        yyextra->dictDoc = yyextra->lastComment;
+        visitDictionary(yyscanner);
+        yyextra->lastComment.clear();
+    }
+
+    ";" {
+        yy_pop_state(yyscanner);
+        yyextra->dictName.clear();
+        yyextra->dictDoc.clear();
+    }
+
+    "{" {
+        yy_push_state(DictionaryBody, yyscanner);
+    }
+
+}
+
+<DictionaryBody>{
+    {IDENTIFIER}|"[]"|"?"|"("|")" {
+        yyextra->attribute.push_back(yytext);
+        yy_push_state(Attribute, yyscanner);
+    }
+
+    "}" {
+        yy_pop_state(yyscanner);
     }
 }
 
@@ -479,6 +527,26 @@ std::shared_ptr<Entry> createEnumEntry(
         visitDoxygen(yyscanner, value.second, ev);
         entry->moveToSubEntryAndKeep(ev);
     }
+    return entry;
+}
+
+std::shared_ptr<Entry> createDictionaryEntry(
+    yyscan_t yyscanner,
+    const char* fileName,
+    std::string name,
+    const char* baseInterface) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    std::shared_ptr<Entry> entry = std::make_shared<Entry>();
+    entry->type = "dictionary";
+    entry->fileName = fileName;
+    entry->name = name.c_str();
+    entry->section = Entry::CLASS_SEC;
+    entry->lang = SrcLangExt_WebIDL;
+    entry->spec = Entry::Dictionary;
+    entry->proto = TRUE;
+    entry->extends.push_back(
+        BaseInfo(QCString("Tizen::") + baseInterface, Public, Virtual)
+    );
     return entry;
 }
 
@@ -597,6 +665,7 @@ void visitAttribute(yyscan_t yyscanner) {
     entry->fileName = yyextra->fileName;
     entry->startLine = yylineno;
     entry->bodyLine = yylineno;
+    entry->initializer = yyextra->defaultVal.c_str();
     std::ostringstream type;
     for (size_t i = 0; i < yyextra->attribute.size() - 1; ++i) {
         type << yyextra->attribute[i] << " ";
@@ -623,6 +692,21 @@ void visitEnum(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
+void visitDictionary(yyscan_t yyscanner) {
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto entry = createDictionaryEntry(
+        yyscanner,
+        yyextra->fileName,
+        getCurrentScope(yyextra->currentScope) + yyextra->dictName,
+        yyextra->baseInterface.c_str()
+    );
+    visitDoxygen(yyscanner, yyextra->dictDoc, entry);
+    Doxygen::docGroup.initGroupInfo(entry.get());
+    yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->parent = yyextra->currentRoot;
+    yyextra->currentRoot = entry;
+}
+
 void visitExtAttributes(yyscan_t yyscanner) {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
@@ -645,6 +729,8 @@ void printCurrentState(yyscan_t yyscanner, const char* label) {
     STATE_ENTRY(EnumBody);
     STATE_ENTRY(ExtendedAttributes);
     STATE_ENTRY(Attribute);
+    STATE_ENTRY(DictionaryDef);
+    STATE_ENTRY(DictionaryBody);
     STATE_ENTRY(Operation);
     STATE_ENTRY(Constructor);
     STATE_ENTRY(Typedef);

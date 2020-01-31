@@ -70,6 +70,7 @@ class ClassDef : virtual public Definition
                         Exception, //=Entry::EXCEPTION_SEC
                         Service,   //=Entry::CLASS_SEC
                         Singleton, //=Entry::CLASS_SEC
+                        Dictionary
                       };
 
     virtual ~ClassDef() {}

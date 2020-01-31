@@ -932,6 +932,8 @@ ClassDef::CompoundType convertToCompoundType(int section,uint64 specifier)
     sec=ClassDef::Service;
   else if (specifier&Entry::Singleton)
     sec=ClassDef::Singleton;
+  else if (specifier&Entry::Dictionary)
+    sec=ClassDef::Dictionary;
 
   switch(section)
   {

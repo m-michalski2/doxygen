@@ -951,7 +951,8 @@ IMAGE_PATH             =
 # properly processed by doxygen.
 
 #INPUT_FILTER           = "{EWIDL_PREPROCESSOR}"
-INPUT_FILTER           = "python3 /home/m.michalski2/git/tizen/api/web/webapi-plugins-doc/ewidl_parser/main.py -p mobile -v 6.0"
+#INPUT_FILTER           = "python3 /home/m.michalski2/git/tizen/api/web/webapi-plugins-doc/ewidl_parser/main.py -p mobile -v 6.0"
+INPUT_FILTER           = "python3 /home/d.juszczak/Repos/web-device-api/ewidl_parser/main.py -p mobile -v 6.0"
 
 
 # The FILTER_PATTERNS tag can be used to specify filters on a per file pattern
