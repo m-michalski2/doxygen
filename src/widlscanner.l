@@ -33,6 +33,7 @@ struct widlscannerYY_state
     const char* fileName;
 
     std::shared_ptr<Entry> currentRoot;
+    std::shared_ptr<Entry> currentEntry;
     std::shared_ptr<Entry> parent;
 
     std::string lastComment;
@@ -44,10 +45,6 @@ struct widlscannerYY_state
     std::string interfaceName;
     std::string interfaceDoc;
     std::vector<std::shared_ptr<Entry>> constructors;
-
-    std::string enumName;
-    std::string enumDoc;
-    std::map<std::string, std::string> enumValues;
 
     std::string dictName;
     std::string dictDoc;
@@ -64,9 +61,6 @@ struct widlscannerYY_state
     std::string operationArgs;
 };
 
-std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
-std::shared_ptr<Entry> createNamespaceEntry(const char*, const char*);
-
 /*
 void printCurrentState(yyscan_t yyscanner, const char* label);
 #define YY_USER_ACTION {                        \
@@ -76,17 +70,22 @@ void printCurrentState(yyscan_t yyscanner, const char* label);
 }
 */
 
+std::shared_ptr<Entry> createModuleEntry(yyscan_t, const char*, const char*);
+std::shared_ptr<Entry> createNamespaceEntry(yyscan_t, const char*, const char*);
+std::shared_ptr<Entry> createOperationEntry(yyscan_t);
+std::shared_ptr<Entry> createEnumValueEntry(yyscan_t, std::string);
+std::shared_ptr<Entry> createEnumEntry(yyscan_t, const char*, std::string);
+
 void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root = nullptr);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
 void visitInterface(yyscan_t yyscanner, std::string interfaceName);
 void visitTypedef(yyscan_t yyscanner);
 void visitOperation(yyscan_t yyscanner);
-void visitEnum(yyscan_t yyscanner);
+void visitEnum(yyscan_t yyscanner, std::string);
 void visitDictionary(yyscan_t yyscanner);
 void visitExtAttributes(yyscan_t yyscanner);
 void visitConstructor(yyscan_t yyscanner);
 void visitAttribute(yyscan_t yyscanner);
-std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner);
 
 %}
 
@@ -255,18 +254,13 @@ STRING \"([^\\\"]|\\.)*\"
 
 <EnumDef>{
     {IDENTIFIER} {
-        yyextra->enumName = yytext;
-        yyextra->enumDoc = yyextra->lastComment;
+        yyextra->parent = yyextra->currentRoot;
+        visitEnum(yyscanner, yytext);
     }
 
     ";" {
-        visitEnum(yyscanner);
         yy_pop_state(yyscanner);
-
-        yyextra->enumName.clear();
-        yyextra->enumValues.clear();
-        yyextra->enumDoc.clear();
-
+        yyextra->currentRoot = yyextra->parent;
     }
 
     "{" {
@@ -276,7 +270,8 @@ STRING \"([^\\\"]|\\.)*\"
 
 <EnumBody>{
     {STRING} {
-        yyextra->enumValues[yytext] = yyextra->lastComment;
+        auto ev = createEnumValueEntry(yyscanner, yytext);
+        yyextra->currentRoot->moveToSubEntryAndKeep(ev);
     }
 
     "," {
@@ -454,9 +449,11 @@ WebIDLOutlineParser::~WebIDLOutlineParser()
 
 
 std::shared_ptr<Entry> createNamespaceEntry(
+    yyscan_t yyscanner,
     const char* fileName,
     const char* name)
 {
+    yyguts_t *yyg = static_cast<yyguts_t*>(yyscanner);
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "namespace";
     entry->fileName = fileName;
@@ -467,10 +464,12 @@ std::shared_ptr<Entry> createNamespaceEntry(
 }
 
 std::shared_ptr<Entry> createInterfaceEntry(
+    yyscan_t yyscanner,
     const char* fileName,
     const char* name,
     const char* baseInterface)
 {
+    yyguts_t *yyg = static_cast<yyguts_t*>(yyscanner);
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "interface";
     entry->fileName = fileName;
@@ -485,11 +484,26 @@ std::shared_ptr<Entry> createInterfaceEntry(
     return entry;
 }
 
+std::shared_ptr<Entry> createEnumValueEntry(
+    yyscan_t yyscanner,
+    std::string name)
+{
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    auto ev = std::make_shared<Entry>();
+    ev->type = "@";
+    ev->fileName = yyextra->fileName;
+    ev->section = Entry::VARIABLE_SEC;
+    ev->lang = SrcLangExt_WebIDL;
+    ev->spec = Entry::Value;
+    ev->name = name.c_str();
+    visitDoxygen(yyscanner, yyextra->lastComment, ev);
+    return ev;
+}
+
 std::shared_ptr<Entry> createEnumEntry(
     yyscan_t yyscanner,
     const char* fileName,
-    std::string name,
-    std::map<std::string, std::string> values)
+    std::string name)
 {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
@@ -499,17 +513,6 @@ std::shared_ptr<Entry> createEnumEntry(
     entry->section = Entry::ENUM_SEC;
     entry->lang = SrcLangExt_WebIDL;
     entry->spec = Entry::Enum | Entry::Strong;
-    for (auto value: values) {
-        auto ev = std::make_shared<Entry>();
-        ev->type = "@";
-        ev->fileName = fileName;
-        ev->section = Entry::VARIABLE_SEC;
-        ev->lang = SrcLangExt_WebIDL;
-        ev->spec = Entry::Value;
-        ev->name = value.first.c_str();
-        visitDoxygen(yyscanner, value.second, ev);
-        entry->moveToSubEntryAndKeep(ev);
-    }
     return entry;
 }
 
@@ -553,6 +556,7 @@ void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> r
         protection,
         position,
         needsEntry);
+    yyextra->lastComment.clear();
 }
 
 std::string getCurrentScope(const std::vector<std::string>& scope)
@@ -568,8 +572,7 @@ void visitModule(yyscan_t yyscanner, std::string moduleName)
 {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     moduleName = getCurrentScope(yyextra->currentScope) + moduleName;
-    auto entry = createNamespaceEntry(yyextra->fileName, moduleName.c_str());
-    Doxygen::docGroup.initGroupInfo(entry.get());
+    auto entry = createNamespaceEntry(yyscanner, yyextra->fileName, moduleName.c_str());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->currentRoot = entry;
 }
@@ -580,11 +583,11 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName)
     interfaceName = getCurrentScope(yyextra->currentScope);
     interfaceName.pop_back(); interfaceName.pop_back();
     auto entry = createInterfaceEntry(
+        yyscanner, 
         yyextra->fileName,
         interfaceName.c_str(),
         yyextra->baseInterface.c_str()
     );
-    Doxygen::docGroup.initGroupInfo(entry.get());
     visitDoxygen(yyscanner, yyextra->interfaceDoc, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->parent = yyextra->currentRoot;
@@ -671,18 +674,17 @@ void visitAttribute(yyscan_t yyscanner)
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitEnum(yyscan_t yyscanner)
+void visitEnum(yyscan_t yyscanner, std::string name)
 {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = createEnumEntry(
         yyscanner,
         yyextra->fileName,
-        getCurrentScope(yyextra->currentScope) + yyextra->enumName,
-        yyextra->enumValues
+        getCurrentScope(yyextra->currentScope) + name
     );
-    visitDoxygen(yyscanner, yyextra->enumDoc, entry);
-    Doxygen::docGroup.initGroupInfo(entry.get());
+    visitDoxygen(yyscanner, yyextra->lastComment, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+    yyextra->currentRoot = entry;
 }
 
 void visitDictionary(yyscan_t yyscanner)
@@ -695,7 +697,6 @@ void visitDictionary(yyscan_t yyscanner)
         yyextra->baseInterface.c_str()
     );
     visitDoxygen(yyscanner, yyextra->dictDoc, entry);
-    Doxygen::docGroup.initGroupInfo(entry.get());
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
