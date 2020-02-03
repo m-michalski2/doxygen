@@ -8,12 +8,12 @@
      * \version 5.0
      */
     [Exposed=Window]
-    module Tizen {
+    module Tizen_2 {
 
         /**
-         * \brief Type alias for testing.
+         * \brief Type DDDD
          */
-        typedef (optional const integer[]? or HelloWorld) TestTypeAlias;
+        typedef (double or HelloWorld) TestTypeAlias;
 
         /**
          * \brief Hello world interface.
@@ -89,11 +89,6 @@
             "PURPLE"
         };
 
-
-        /**
-        * \brief The Message identifierdasdasdasdasdasd.
-        */
-        typedef DOMString[] MessageId;
 
         /**
         * \brief Simple Brief of dictionary.

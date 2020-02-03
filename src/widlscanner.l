@@ -609,7 +609,6 @@ void visitTypedef(yyscan_t yyscanner)
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
     entry->name = yyextra->typeDef.back().c_str();
-    entry->spec = Entry::Alias;
     entry->fileName = yyextra->fileName;
     entry->startLine = yylineno;
     entry->bodyLine = yylineno;
@@ -619,6 +618,7 @@ void visitTypedef(yyscan_t yyscanner)
     }
     entry->type = type;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->typeDef.clear();
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
