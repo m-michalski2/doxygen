@@ -5,6 +5,9 @@
 %option noyywrap
 %option yylineno
 %option extra-type="struct widlscannerYY_state *"
+%option nounistd
+%option noinput
+%option nounput
 
 %{
 
@@ -22,12 +25,9 @@
 #include "widlscanner.h"
 #include "widlcode.h"
 
-#define YY_NO_INPUT 1
-#define YY_NO_UNISTD_H 1
-
 struct widlscannerYY_state
 {
-    WebIDLOutlineParser* thisParser;
+    WebIDLOutlineParser* parser;
     CommentScanner commentScanner;
 
     const char* fileName;
@@ -455,7 +455,8 @@ WebIDLOutlineParser::~WebIDLOutlineParser()
 
 std::shared_ptr<Entry> createNamespaceEntry(
     const char* fileName,
-    const char* name) {
+    const char* name)
+{
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "namespace";
     entry->fileName = fileName;
@@ -468,7 +469,8 @@ std::shared_ptr<Entry> createNamespaceEntry(
 std::shared_ptr<Entry> createInterfaceEntry(
     const char* fileName,
     const char* name,
-    const char* baseInterface) {
+    const char* baseInterface)
+{
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "interface";
     entry->fileName = fileName;
@@ -487,7 +489,8 @@ std::shared_ptr<Entry> createEnumEntry(
     yyscan_t yyscanner,
     const char* fileName,
     std::string name,
-    std::map<std::string, std::string> values) {
+    std::map<std::string, std::string> values)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "enum";
@@ -514,7 +517,8 @@ std::shared_ptr<Entry> createDictionaryEntry(
     yyscan_t yyscanner,
     const char* fileName,
     std::string name,
-    const char* baseInterface) {
+    const char* baseInterface)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     std::shared_ptr<Entry> entry = std::make_shared<Entry>();
     entry->type = "dictionary";
@@ -530,14 +534,15 @@ std::shared_ptr<Entry> createDictionaryEntry(
     return entry;
 }
 
-void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root) {
+void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     if (root == nullptr) root = yyextra->currentRoot;
     auto protection = Public;
     int position = 0;
     bool needsEntry = false;
     yyextra->commentScanner.parseCommentBlock(
-        yyextra->thisParser,
+        yyextra->parser,
         root.get(),
         text.c_str(),
         yyextra->fileName,
@@ -550,7 +555,8 @@ void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> r
         needsEntry);
 }
 
-std::string getCurrentScope(const std::vector<std::string>& scope) {
+std::string getCurrentScope(const std::vector<std::string>& scope)
+{
     std::ostringstream oss;
     for (auto s: scope) {
         oss << s << "::";
@@ -558,7 +564,8 @@ std::string getCurrentScope(const std::vector<std::string>& scope) {
     return oss.str();
 }
 
-void visitModule(yyscan_t yyscanner, std::string moduleName) {
+void visitModule(yyscan_t yyscanner, std::string moduleName)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     moduleName = getCurrentScope(yyextra->currentScope) + moduleName;
     auto entry = createNamespaceEntry(yyextra->fileName, moduleName.c_str());
@@ -567,7 +574,8 @@ void visitModule(yyscan_t yyscanner, std::string moduleName) {
     yyextra->currentRoot = entry;
 }
 
-void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
+void visitInterface(yyscan_t yyscanner, std::string interfaceName)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     interfaceName = getCurrentScope(yyextra->currentScope);
     interfaceName.pop_back(); interfaceName.pop_back();
@@ -592,7 +600,8 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName) {
     yyextra->constructors.clear();
 }
 
-void visitTypedef(yyscan_t yyscanner) {
+void visitTypedef(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
@@ -610,7 +619,8 @@ void visitTypedef(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner) {
+std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::FUNCTION_SEC;
@@ -630,13 +640,15 @@ std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner) {
     return entry;
 }
 
-void visitOperation(yyscan_t yyscanner) {
+void visitOperation(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = createOperationEntry(yyscanner);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitAttribute(yyscan_t yyscanner) {
+void visitAttribute(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
@@ -659,7 +671,8 @@ void visitAttribute(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitEnum(yyscan_t yyscanner) {
+void visitEnum(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = createEnumEntry(
         yyscanner,
@@ -672,7 +685,8 @@ void visitEnum(yyscan_t yyscanner) {
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
-void visitDictionary(yyscan_t yyscanner) {
+void visitDictionary(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto entry = createDictionaryEntry(
         yyscanner,
@@ -687,15 +701,18 @@ void visitDictionary(yyscan_t yyscanner) {
     yyextra->currentRoot = entry;
 }
 
-void visitExtAttributes(yyscan_t yyscanner) {
+void visitExtAttributes(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
 
-void visitConstructor(yyscan_t yyscanner) {
+void visitConstructor(yyscan_t yyscanner)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
 }
 
-void printCurrentState(yyscan_t yyscanner, const char* label) {
+void printCurrentState(yyscan_t yyscanner, const char* label)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     static const char* stateNames[100];
 #define STATE_ENTRY(StateName) stateNames[StateName] = #StateName;
@@ -723,11 +740,12 @@ void WebIDLOutlineParser::parseInput(
     const char *fileBuf,
     const std::shared_ptr<Entry> &root,
     bool,
-    QStrList&){
+    QStrList&)
+{
     struct yyguts_t *yyg = (struct yyguts_t*)p->yyscanner;
     printlex(1, TRUE, __FILE__, fileName);
 
-    yyextra->thisParser = this;
+    yyextra->parser = this;
     yyextra->fileName = fileName;
     yyextra->currentRoot = root;
 
@@ -736,7 +754,8 @@ void WebIDLOutlineParser::parseInput(
     auto lexBufState = widlscannerYY_scan_string(fileBuf, p->yyscanner);
     widlscannerYYlex(p->yyscanner);
 
-    // TODO: this line causes SEGFAULT for some reason.
+    // TODO: this line causes SEGFAULT for some reason,
+    //       but flex doc claims it is necessary:
     //widlscannerYY_delete_buffer(lexBufState, p->yyscanner);
 
     Doxygen::docGroup.leaveFile(fileName, yylineno);
