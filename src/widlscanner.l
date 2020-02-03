@@ -31,8 +31,6 @@ struct widlscannerYY_state
     CommentScanner commentScanner;
 
     const char* fileName;
-    const char* inputString;
-    int inputPosition;
 
     std::shared_ptr<Entry> currentRoot;
     std::shared_ptr<Entry> parent;
@@ -69,16 +67,14 @@ struct widlscannerYY_state
 std::shared_ptr<Entry> createModuleEntry(const char*, const char*);
 std::shared_ptr<Entry> createNamespaceEntry(const char*, const char*);
 
-static int yyread(yyscan_t yyscanner, char *buf, int max_size);
-#undef YY_INPUT
-#define YY_INPUT(buf, result, max_size) result = yyread(yyscanner, buf, max_size);
-
+/*
 void printCurrentState(yyscan_t yyscanner, const char* label);
-#define YY_USER_ACTION {                      \
+#define YY_USER_ACTION {                        \
     static char RuleNum[4];                     \
     sprintf(RuleNum, "%d", yylineno);           \
     printCurrentState(yyscanner, RuleNum);      \
 }
+*/
 
 void visitDoxygen(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> root = nullptr);
 void visitModule(yyscan_t yyscanner, std::string interfaceName);
@@ -434,23 +430,7 @@ STRING \"([^\\\"]|\\.)*\"
 <*>\n {
 }
 
-<<EOF>> {
-    yyterminate();
-}
-
 %%
-
-static int yyread(yyscan_t yyscanner, char* buf, int max_size) {
-    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-    int c = 0;
-    const char *p = yyextra->inputString + yyextra->inputPosition;
-    while (c < max_size && *p) {
-        *buf++ = *p++;
-        c++;
-    }
-    yyextra->inputPosition += c;
-    return c;
-}
 
 struct WebIDLOutlineParser::Private
 {
@@ -661,7 +641,7 @@ void visitAttribute(yyscan_t yyscanner) {
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
     entry->name = yyextra->attribute.back().c_str();
-    entry->protection = Public;
+        entry->protection = Public;
     entry->fileName = yyextra->fileName;
     entry->startLine = yylineno;
     entry->bodyLine = yylineno;
@@ -751,11 +731,14 @@ void WebIDLOutlineParser::parseInput(
     yyextra->fileName = fileName;
     yyextra->currentRoot = root;
 
-    yyextra->inputPosition = 0;
-    yyextra->inputString = fileBuf;
-
     Doxygen::docGroup.enterFile(fileName, 0);
+
+    auto lexBufState = widlscannerYY_scan_string(fileBuf, p->yyscanner);
     widlscannerYYlex(p->yyscanner);
+
+    // TODO: this line causes SEGFAULT for some reason.
+    //widlscannerYY_delete_buffer(lexBufState, p->yyscanner);
+
     Doxygen::docGroup.leaveFile(fileName, yylineno);
 
     printlex(yy_flex_debug, FALSE, __FILE__, fileName);
