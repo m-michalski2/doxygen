@@ -21,8 +21,8 @@
          */
         [
             NoInterfaceObject,
-            Constructor(int xx,int yy),
-            Constructor()
+            Constructor(),
+            Constructor(int xx,int yy)
         ]
         interface HelloWorld {
             attribute x;
@@ -57,6 +57,92 @@
             readonly attribute int x;
             readonly attribute int y;
             readonly attribute int z raises (WebAPIException);
+            /**
+            * \brief Gets the client object. If not exist, client will be automatically created.
+            *
+            * \privilegelevel public
+            * \privilege http://tizen.org/privilege/mediacontroller.client
+            *
+            * \return The <em>MediaController Client</em> object.
+            *
+            * \throw WebAPIException with error type NotSupportedError, if this feature is not supported.
+            * \throw WebAPIException with error type SecurityError, if the application does not have the privilege to call this method.
+            * \throw WebAPIException with error type UnknownError, if any other error occurs.
+            *
+            * \code
+            * try
+            * {
+            *   var mcClient = tizen.mediacontroller.getClient();
+            * }
+            * catch (err)
+            * {
+            *   console.log(err.name + ": " + err.message);
+            * }
+            * \endcode
+            */
+            MediaControllerClient getClient() raises(WebAPIException);
+            /**
+            * \brief Gets the client object. If not exist, client will be automatically created.
+            *
+            * \privilegelevel public
+            * \privilege http://tizen.org/privilege/mediacontroller.client
+            *
+            * \param name CLIENT NAME
+            *
+            * \return The <em>MediaController Client</em> object.
+            *
+            * \throw WebAPIException with error type NotSupportedError, if this feature is not supported.
+            * \throw WebAPIException with error type SecurityError, if the application does not have the privilege to call this method.
+            * \throw WebAPIException with error type UnknownError, if any other error occurs.
+            *
+            * \code
+            * try
+            * {
+            *   var mcClient = tizen.mediacontroller.getClient();
+            * }
+            * catch (err)
+            * {
+            *   console.log(err.name + ": " + err.message);
+            * }
+            * \endcode
+            */
+            MediaControllerClient getClient(DOMString name) raises(WebAPIException);
+            /**
+            * \brief Saves the playlist in a local database.
+            *
+            * The <em>errorCallback</em> may be triggered for one of the following errors:
+            * <ul>
+            *   <li><em>InvalidValuesError</em>: if playlist with given name does not exist.</li>
+            *   <li><em>UnknownError</em>: if any other error prevents the function from successful completion.</li>
+            * </ul>
+            *
+            * \remark All playlists will be deleted after the application is closed.
+            *
+            * \param playlist <em>MediaControllerPlaylist</em> object to save.
+            * \param successCallback Function to be called when <em>savePlaylist</em> is finished without error.
+            * \param errorCallback Function to be called when <em>savePlaylist</em> fails.
+            *
+            * \throw WebAPIException with error type TypeMismatchError, if any input parameter is not compatible with the expected type for that parameter.
+            * \throw WebAPIException with error type UnknownError, if any other error occurs.
+            *
+            * \code
+            * var mcServer = tizen.mediacontroller.createServer();
+            * var playlist = mcServer.playlists.createPlaylist("testPlaylistName");
+            * function successCallback()
+            * {
+            *   console.log("savePlaylist successful.");
+            * }
+            * function errorCallback(error)
+            * {
+            *   console.log("savePlaylist failed with error: " + error);
+            * }
+            * mcServer.playlists.savePlaylist(playlist, successCallback, errorCallback);
+            * \endcode
+            * \output
+            * savePlaylist successful.
+            * \endoutput
+            */
+            void savePlaylist(MediaControllerPlaylist playlist, optional SuccessCallback? successCallback, optional ErrorCallback? errorCallback) raises (WebAPIException);
         };
 
         /**
