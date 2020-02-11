@@ -106,7 +106,7 @@
             * }
             * \endcode
             */
-            MediaControllerClient getClient(DOMString name) raises(WebAPIException);
+            MediaControllerClient getClient(DOMString nameDD, DOMString SURname) raises(WebAPIException);
             /**
             * \brief Saves the playlist in a local database.
             *
@@ -142,7 +142,8 @@
             * savePlaylist successful.
             * \endoutput
             */
-            void savePlaylist(MediaControllerPlaylist playlist, optional SuccessCallback? successCallback, optional ErrorCallback? errorCallback) raises (WebAPIException);
+            void savePlaylist(MediaControllerPlaylist playlist, optional SuccessCallback? successCallback,
+                             optional ErrorCallback? errorCallback) raises (WebAPIException);
         };
 
         /**

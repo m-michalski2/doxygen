@@ -108,6 +108,7 @@ BB [ \t]*
 
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]*
 ARGLIST \(.*\)
+MLARGLIST \(.*\n.*\)
 STRING \"([^\\\"]|\\.)*\"
 
 %%
@@ -139,7 +140,6 @@ STRING \"([^\\\"]|\\.)*\"
 <INITIAL,ModuleBody>"[" {
     yy_push_state(ExtendedAttributes, yyscanner);
     yyextra->extendedAttributes.clear();
-    yyextra->constructors.clear();
 }
 
 <ExtendedAttributes>{
@@ -341,7 +341,7 @@ STRING \"([^\\\"]|\\.)*\"
         yy_pop_state(yyscanner);
     }
 
-    {IDENTIFIER}{BB}{ARGLIST} {
+    {IDENTIFIER}{BB}{ARGLIST}|{IDENTIFIER}{BB}{MLARGLIST} {
         std::string str = yytext;
         int argPos = str.find("(");
         yyextra->operation.push_back(str.substr(0, argPos));
@@ -580,7 +580,7 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName)
     interfaceName = getCurrentScope(yyextra->currentScope);
     interfaceName.pop_back(); interfaceName.pop_back();
     auto entry = createInterfaceEntry(
-        yyscanner, 
+        yyscanner,
         yyextra->fileName,
         interfaceName.c_str(),
         yyextra->baseInterface.c_str()
@@ -590,10 +590,13 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName)
     yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
 
+
     // process extended attributes.
     for (auto ctor: yyextra->constructors) {
-        fprintf(stderr, "adding constructor to %s\n", yyextra->currentRoot->name);
+        fprintf(stderr, "adding constructor to %s\n", yyextra->currentRoot->name.data());
         ctor->name = yyextra->currentRoot->name;
+        //ctor->type = yyextra->currentRoot->name;
+        visitDoxygen(yyscanner, yyextra->lastComment, ctor);
         yyextra->currentRoot->moveToSubEntryAndKeep(ctor);
     }
 
@@ -631,6 +634,7 @@ std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner)
     for (size_t i=0; i<yyextra->operation.size() - 1; ++i) {
         returnType << yyextra->operation[i] << " ";
     }
+
     entry->type = returnType.str().c_str();
     entry->mtype = Method;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
