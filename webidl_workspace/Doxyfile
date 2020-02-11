@@ -573,7 +573,7 @@ CASE_SENSE_NAMES       = YES
 # scope will be hidden.
 # The default value is: NO.
 
-HIDE_SCOPE_NAMES       = NO
+HIDE_SCOPE_NAMES       = YES
 
 # If the HIDE_COMPOUND_REFERENCE tag is set to NO (default) then doxygen will
 # append additional text to a page's title, such as Class Reference. If set to
@@ -834,6 +834,7 @@ WARN_LOGFILE           =
 # Note: If this tag is empty the current directory is searched.
 
 INPUT                  = ./api/
+#INPUT                  = ./ewidl/
 
 # This tag can be used to specify the character encoding of the source files
 # that doxygen parses. Internally doxygen uses the UTF-8 encoding. Doxygen uses
@@ -951,8 +952,8 @@ IMAGE_PATH             =
 # properly processed by doxygen.
 
 #INPUT_FILTER           = "{EWIDL_PREPROCESSOR}"
-#INPUT_FILTER           = "python3 /home/m.michalski2/git/tizen/api/web/webapi-plugins-doc/ewidl_parser/main.py -p mobile -v 6.0"
-INPUT_FILTER           = "python3 /home/d.juszczak/Repos/web-device-api/ewidl_parser/main.py -p mobile -v 6.0"
+INPUT_FILTER           = "python3 /home/m.michalski2/git/tizen/api/web/webapi-plugins-doc/ewidl_parser/main.py -p mobile -v 6.0"
+#INPUT_FILTER           = "python3 /home/d.juszczak/Repos/web-device-api/ewidl_parser/main.py -p mobile -v 6.0"
 
 
 # The FILTER_PATTERNS tag can be used to specify filters on a per file pattern
