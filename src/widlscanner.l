@@ -43,7 +43,6 @@ struct widlscannerYY_state
 
     std::string baseInterface;
     std::string interfaceName;
-    std::string interfaceDoc;
     std::vector<std::shared_ptr<Entry>> constructors;
 
     std::string dictName;
@@ -109,6 +108,7 @@ BB [ \t]*
 
 IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]*
 ARGLIST \(.*\)
+MLARGLIST \(.*\n.*\)
 STRING \"([^\\\"]|\\.)*\"
 
 %%
@@ -140,7 +140,6 @@ STRING \"([^\\\"]|\\.)*\"
 <INITIAL,ModuleBody>"[" {
     yy_push_state(ExtendedAttributes, yyscanner);
     yyextra->extendedAttributes.clear();
-    yyextra->constructors.clear();
 }
 
 <ExtendedAttributes>{
@@ -169,7 +168,8 @@ STRING \"([^\\\"]|\\.)*\"
         if (pos == 0) {
             fprintf(stderr, "[WIDL] Constuctor: %s\n", yytext);
             yyextra->operation.push_back("Constructor");
-            yyextra->operationArgs = text.substr(pos, text.size() - pos);
+            // add only arguments of Constructor
+            yyextra->operationArgs = text.substr(pos + 11, text.size() - pos);
             auto entry = createOperationEntry(yyscanner);
             yyextra->constructors.push_back(entry);
         }
@@ -285,7 +285,6 @@ STRING \"([^\\\"]|\\.)*\"
 
 <InterfaceDef>{
     {IDENTIFIER} {
-        yyextra->interfaceDoc = yyextra->lastComment;
         yyextra->interfaceName = yytext;
         yyextra->currentScope.push_back(yytext);
         visitInterface(yyscanner, yyextra->interfaceName);
@@ -307,7 +306,6 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->currentScope.pop_back();
         yyextra->baseInterface.clear();
         yyextra->interfaceName.clear();
-        yyextra->interfaceDoc.clear();
     }
 }
 
@@ -338,30 +336,29 @@ STRING \"([^\\\"]|\\.)*\"
 }
 
 <Operation>{
-    "raises"{BB}"("{BB}{IDENTIFIER}{BB}")" {
-        yyextra->operationRaises = yytext;
-    }
-
     ";" {
         visitOperation(yyscanner);
         yy_pop_state(yyscanner);
     }
 
-    {ARGLIST} {
-        // if (...) are encountered at the beginning of operation definition
-        // they represent union type rather than argument list.
-        if (yyextra->operation.empty()) {
-            yyextra->operation.push_back(yytext);
+    {IDENTIFIER}{BB}{ARGLIST}|{IDENTIFIER}{BB}{MLARGLIST} {
+        std::string str = yytext;
+        int argPos = str.find("(");
+        yyextra->operation.push_back(str.substr(0, argPos));
+        std::string args = str.substr(argPos, str.size() - argPos);
+        if (std::string::npos == args.find("raises")) {
+            yyextra->operationArgs = args;
         }
         else {
-            yyextra->operationArgs = yytext;
+            int raisesPos = args.find("raises");
+            yyextra->operationArgs = args.substr(0, raisesPos);
+            yyextra->operationRaises = args.substr(raisesPos, args.size() - raisesPos);
         }
     }
 
-    {IDENTIFIER}|"[]"|"?"|")"|"(" {
+    {IDENTIFIER}|"[]"|"?"|"("|")" {
         yyextra->operation.push_back(yytext);
     }
-
 }
 
 <Attribute>{
@@ -583,20 +580,23 @@ void visitInterface(yyscan_t yyscanner, std::string interfaceName)
     interfaceName = getCurrentScope(yyextra->currentScope);
     interfaceName.pop_back(); interfaceName.pop_back();
     auto entry = createInterfaceEntry(
-        yyscanner, 
+        yyscanner,
         yyextra->fileName,
         interfaceName.c_str(),
         yyextra->baseInterface.c_str()
     );
-    visitDoxygen(yyscanner, yyextra->interfaceDoc, entry);
+    visitDoxygen(yyscanner, yyextra->lastComment, entry);
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
     yyextra->parent = yyextra->currentRoot;
     yyextra->currentRoot = entry;
 
+
     // process extended attributes.
     for (auto ctor: yyextra->constructors) {
-        fprintf(stderr, "adding constructor to %s\n", yyextra->currentRoot->name);
+        fprintf(stderr, "adding constructor to %s\n", yyextra->currentRoot->name.data());
         ctor->name = yyextra->currentRoot->name;
+        //ctor->type = yyextra->currentRoot->name;
+        visitDoxygen(yyscanner, yyextra->lastComment, ctor);
         yyextra->currentRoot->moveToSubEntryAndKeep(ctor);
     }
 
@@ -609,7 +609,6 @@ void visitTypedef(yyscan_t yyscanner)
     auto entry = std::make_shared<Entry>();
     entry->section = Entry::VARIABLE_SEC;
     entry->name = yyextra->typeDef.back().c_str();
-    entry->spec = Entry::Alias;
     entry->fileName = yyextra->fileName;
     entry->startLine = yylineno;
     entry->bodyLine = yylineno;
@@ -619,6 +618,7 @@ void visitTypedef(yyscan_t yyscanner)
     }
     entry->type = type;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
+    yyextra->typeDef.clear();
     yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 }
 
@@ -634,6 +634,7 @@ std::shared_ptr<Entry> createOperationEntry(yyscan_t yyscanner)
     for (size_t i=0; i<yyextra->operation.size() - 1; ++i) {
         returnType << yyextra->operation[i] << " ";
     }
+
     entry->type = returnType.str().c_str();
     entry->mtype = Method;
     visitDoxygen(yyscanner, yyextra->lastComment, entry);
@@ -754,10 +755,6 @@ void WebIDLOutlineParser::parseInput(
 
     auto lexBufState = widlscannerYY_scan_string(fileBuf, p->yyscanner);
     widlscannerYYlex(p->yyscanner);
-
-    // TODO: this line causes SEGFAULT for some reason,
-    //       but flex doc claims it is necessary:
-    //widlscannerYY_delete_buffer(lexBufState, p->yyscanner);
 
     Doxygen::docGroup.leaveFile(fileName, yylineno);
 

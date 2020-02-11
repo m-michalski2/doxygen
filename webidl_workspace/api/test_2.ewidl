@@ -1,0 +1,117 @@
+#if Version:atLeast("5.0") then
+    /**
+     * \brief Test module.
+     *
+     * Longer description of the test module.
+     * This description should be able to span over multiple lines.
+     *
+     * \version 5.0
+     */
+    [Exposed=Window]
+    module Tizen_2 {
+
+        /**
+         * \brief Type DDDD
+         */
+        typedef (double or HelloWorld) TestTypeAlias;
+
+        /**
+         * \brief Hello world interface.
+         * \version 5.0
+         */
+        [
+            NoInterfaceObject,
+            Constructor(int xx,int yy),
+            Constructor()
+        ]
+        interface HelloWorld {
+            attribute x;
+            attribute y;
+
+            /**
+             * \brief Say hi to someone.
+             * \param name Name of the person to be greeted.
+             *
+             * \code{.cpp}
+             * function main(args) {
+             *  var x = new HelloWorld(10, 20);
+             *  x.sayHi(args[0]);
+             * }
+             * \endcode
+             * \output
+             * Hello, Tizen @ (10, 20).
+             * \endoutput
+             */
+            (void or integer[])? sayHi(DOMString name) raises (WebAPIException);
+        };
+
+        /**
+         * \brief Goodbye world interface.
+         * \version 5.0
+         */
+        [
+            Constructor(int, int),
+            Constructor()
+        ]
+        interface GoodbyeWorld : HelloWorld {
+            readonly attribute int x;
+            readonly attribute int y;
+            readonly attribute int z raises (WebAPIException);
+        };
+
+        /**
+         * \brief Enum representing possible color values.
+         */
+        enum Colors {
+            /**
+             * \brief RGB(255, 0, 0)
+             */
+            "RED",
+            /**
+             * \brief RGB(0, 255, 0)
+             */
+            "GREEN",
+            /**
+             * \brief RGB(0, 0, 255)
+             */
+            "BLUE",
+            /**
+             * \brief RGB(255, 100, 255)
+             */
+            "ORANGE",
+            /**
+             * \brief RGB(0, 200, 200)
+             */
+            "CYAN",
+            /**
+             * \brief RGB(1, 2, 3)
+             */
+            "PURPLE"
+        };
+
+
+        /**
+        * \brief Simple Brief of dictionary.
+        * Additional comment 1.
+        * Additional comment 2.
+        */
+        dictionary SimpleDictionary {
+            DOMString attribute1 = asd;
+            (DOMString or double) attribute2;
+            /**
+            * \brief doodah
+            * \version 123
+            */
+            (HelloWorld or int) attrib3 = 1231;
+            AbstractFilter filter;
+            AttributeFilter Afilter;
+            HelloWorld hello;
+            ByteStream byteStream;
+            Message msg;
+            MessageId msgId;
+            MessageAttachmentId msgAttId;
+            TestTypeAlias ttAlias;
+        };
+
+    };
+#end -- #if Version:atLeast("5.0") then
