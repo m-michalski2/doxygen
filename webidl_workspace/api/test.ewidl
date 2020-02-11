@@ -21,11 +21,25 @@
          */
         [
             NoInterfaceObject,
+            /**
+             * \brief Constructor with two args.
+             */
             Constructor(int xx,int yy),
+
+            /**
+             * \brief Default constructor.
+             */
             Constructor()
         ]
         interface HelloWorld {
+            /**
+             * \brief x coord.
+             */
             attribute x;
+
+            /**
+             * \brief y coord.
+             */
             attribute y;
 
             /**
@@ -50,12 +64,29 @@
          * \version 5.0
          */
         [
+            /**
+             * \brief 2 args ctor
+             */
             Constructor(int, int),
+            /**
+             * \brief default ctor.
+             */
             Constructor()
         ]
         interface GoodbyeWorld : HelloWorld {
+            /**
+             * \brief attribute x
+             */
             readonly attribute int x;
+
+            /**
+             * \brief attribute y
+             */
             readonly attribute int y;
+
+            /**
+             * \brief attribute z
+             */
             readonly attribute int z raises (WebAPIException);
         };
 
