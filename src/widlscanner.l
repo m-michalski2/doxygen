@@ -45,9 +45,6 @@ struct widlscannerYY_state
     std::string interfaceName;
     std::vector<std::shared_ptr<Entry>> constructors;
 
-    std::string dictName;
-    std::string dictDoc;
-
     bool readonlyAttribute;
     std::vector<std::string> attribute;
     std::string attributeRaises;
@@ -55,12 +52,14 @@ struct widlscannerYY_state
 
     std::vector<std::string> typeDef;
 
+    std::vector<std::string> arguments;
     std::vector<std::string> operation;
     std::string operationRaises;
     std::string operationArgs;
 };
 
 /*
+static const char* stateToString(int);
 #define YY_USER_ACTION {                        \
     static char RuleNum[4];                     \
     sprintf(RuleNum, "%d", yylineno);           \
@@ -68,9 +67,18 @@ struct widlscannerYY_state
 }
 */
 
-
-void setEntryDoc(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> entry);
+void setEntryDoc(yyscan_t yyscanner, std::shared_ptr<Entry> entry);
 std::string getCurrentScope(const std::vector<std::string>& scope);
+
+std::string getArgName(std::string code) {
+    int pos = code.rfind(" ");
+    return code.substr(pos, code.size() - pos);
+}
+
+std::string getArgType(std::string code) {
+    int pos = code.rfind(" ");
+    return code.substr(0, pos);
+}
 
 %}
 
@@ -88,6 +96,7 @@ std::string getCurrentScope(const std::vector<std::string>& scope);
 %x DictionaryBody
 %x Operation
 %x Constructor
+%x ArgumentList
 
 B  [ \t]
 BB [ \t]*
@@ -141,35 +150,8 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->extendedAttributes.push_back(yytext);
     }
 
-    {IDENTIFIER}{BB}{ARGLIST} {
-        std::string text = yytext;
-        int pos = text.rfind("Constructor", 0);
-        if (pos == 0) {
-            yyextra->operation.push_back("Constructor");
-            yyextra->operationArgs = text.substr(pos + 11, text.size() - pos);
-
-            auto entry = std::make_shared<Entry>();
-            entry->section = Entry::FUNCTION_SEC;
-            entry->name = yyextra->operation.back().c_str();
-            entry->args = yyextra->operationArgs.c_str();
-            entry->exception = yyextra->operationRaises.c_str();
-            std::ostringstream returnType;
-            for (size_t i=0; i<yyextra->operation.size() - 1; ++i) {
-                returnType << yyextra->operation[i] << " ";
-            }
-
-            entry->type = returnType.str().c_str();
-            entry->mtype = Method;
-            setEntryDoc(yyscanner, yyextra->lastComment, entry);
-            yyextra->operation.clear();
-            yyextra->operationArgs.clear();
-            yyextra->operationRaises.clear();
-
-            yyextra->constructors.push_back(entry);
-        }
-        else {
-            yyextra->extendedAttributes.push_back(yytext);
-        }
+    "Constructor" {
+        yy_push_state(Constructor, yyscanner);
     }
 
     {IDENTIFIER} {
@@ -181,19 +163,58 @@ STRING \"([^\\\"]|\\.)*\"
     }
 }
 
+<Constructor>{
+    "(" {
+        yy_push_state(ArgumentList, yyscanner);
+    }
+
+    ")" {
+        auto entry = std::make_shared<Entry>();
+        entry->section = Entry::FUNCTION_SEC;
+        entry->name = "Constructor";
+        entry->type = "";
+        entry->mtype = Method;
+        for (auto arg: yyextra->arguments) {
+            Argument argDef;
+            argDef.type = getArgType(arg).c_str();
+            argDef.name = getArgName(arg).c_str();
+            entry->argList.push_back(argDef);
+        }
+        yyextra->arguments.clear();
+        setEntryDoc(yyscanner, entry);
+        yyextra->constructors.push_back(entry);
+        yy_pop_state(yyscanner);
+    }
+}
+
+<ArgumentList>{
+    ")" {
+        yyless(0);
+        yy_pop_state(yyscanner);
+    }
+
+    [^,)]+ {
+        std::string argument = yytext;
+        yyextra->arguments.push_back(argument);
+    }
+
+    "," {
+        /* arguments separator */
+    }
+}
+
 <Module>{
     {IDENTIFIER} {
-        std::string moduleName = getCurrentScope(yyextra->currentScope) + yytext;
         auto entry = std::make_shared<Entry>();
+        entry->name = (getCurrentScope(yyextra->currentScope) + yytext).c_str();
+        yyextra->currentScope.push_back(yytext);
         entry->type = "namespace";
         entry->fileName = yyextra->fileName;
-        entry->name = moduleName.c_str();
         entry->section = Entry::NAMESPACE_SEC;
         entry->lang = SrcLangExt_WebIDL;
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->currentRoot = entry;
-        yyextra->currentScope.push_back(yytext);
         yy_push_state(ModuleBody, yyscanner);
     }
 
@@ -258,7 +279,7 @@ STRING \"([^\\\"]|\\.)*\"
             type += (yyextra->typeDef[i] + " ").c_str();
         }
         entry->type = type;
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->typeDef.clear();
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
         yy_pop_state(yyscanner);
@@ -276,7 +297,7 @@ STRING \"([^\\\"]|\\.)*\"
         entry->lang = SrcLangExt_WebIDL;
         entry->spec = Entry::Enum | Entry::Strong;
 
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
         yyextra->currentRoot = entry;
 
@@ -301,7 +322,7 @@ STRING \"([^\\\"]|\\.)*\"
         ev->lang = SrcLangExt_WebIDL;
         ev->spec = Entry::Value;
         ev->name = yytext;
-        setEntryDoc(yyscanner, yyextra->lastComment, ev);
+        setEntryDoc(yyscanner, ev);
         yyextra->currentRoot->moveToSubEntryAndKeep(ev);
     }
 
@@ -335,15 +356,14 @@ STRING \"([^\\\"]|\\.)*\"
             BaseInfo(QCString("Tizen::") + yyextra->baseInterface.c_str(), Public, Normal)
         );
 
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
         yyextra->parent = yyextra->currentRoot;
         yyextra->currentRoot = entry;
 
         for (auto ctor: yyextra->constructors) {
             ctor->name = yyextra->currentRoot->name;
-            //ctor->type = yyextra->currentRoot->name;
-            setEntryDoc(yyscanner, yyextra->lastComment, ctor);
+            setEntryDoc(yyscanner, ctor);
             yyextra->currentRoot->moveToSubEntryAndKeep(ctor);
         }
 
@@ -390,11 +410,6 @@ STRING \"([^\\\"]|\\.)*\"
     }
 }
 
-<Constructor>{
-    {ARGLIST} {
-    }
-}
-
 <Operation>{
     ";" {
         auto entry = std::make_shared<Entry>();
@@ -409,7 +424,7 @@ STRING \"([^\\\"]|\\.)*\"
 
         entry->type = returnType.str().c_str();
         entry->mtype = Method;
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->operation.clear();
         yyextra->operationArgs.clear();
         yyextra->operationRaises.clear();
@@ -461,7 +476,6 @@ STRING \"([^\\\"]|\\.)*\"
             entry->spec = Entry::Property | Entry::Readonly;
         }
 
-        setEntryDoc(yyscanner, yyextra->lastComment, entry);
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 
         yyextra->attribute.clear();
@@ -487,33 +501,22 @@ STRING \"([^\\\"]|\\.)*\"
 
 <DictionaryDef>{
     {IDENTIFIER} {
-        yyextra->dictName = yytext;
-        yyextra->dictDoc = yyextra->lastComment;
-
         std::shared_ptr<Entry> entry = std::make_shared<Entry>();
         entry->type = "dictionary";
         entry->fileName = yyextra->fileName;
-        entry->name = (getCurrentScope(yyextra->currentScope) + yyextra->dictName).c_str();
+        entry->name = (getCurrentScope(yyextra->currentScope) + yytext).c_str();
         entry->section = Entry::CLASS_SEC;
         entry->lang = SrcLangExt_WebIDL;
         entry->spec = Entry::Dictionary;
         entry->proto = TRUE;
-        entry->extends.push_back(
-            BaseInfo(QCString("Tizen::") + yyextra->baseInterface.c_str(), Public, Virtual)
-        );
-
-        setEntryDoc(yyscanner, yyextra->dictDoc, entry);
+        setEntryDoc(yyscanner, entry);
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
         yyextra->parent = yyextra->currentRoot;
         yyextra->currentRoot = entry;
-
-        yyextra->lastComment.clear();
     }
 
     ";" {
         yy_pop_state(yyscanner);
-        yyextra->dictName.clear();
-        yyextra->dictDoc.clear();
     }
 
     "{" {
@@ -562,7 +565,7 @@ WebIDLOutlineParser::~WebIDLOutlineParser()
 }
 
 
-void setEntryDoc(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> entry)
+void setEntryDoc(yyscan_t yyscanner, std::shared_ptr<Entry> entry)
 {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
     auto protection = Public;
@@ -571,7 +574,7 @@ void setEntryDoc(yyscan_t yyscanner, std::string text, std::shared_ptr<Entry> en
     yyextra->commentScanner.parseCommentBlock(
         yyextra->parser,
         entry.get(),
-        text.c_str(),
+        yyextra->lastComment.c_str(),
         yyextra->fileName,
         yylineno,
         false,
