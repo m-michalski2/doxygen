@@ -61,11 +61,10 @@ struct widlscannerYY_state
 };
 
 /*
-void printCurrentState(yyscan_t yyscanner, const char* label);
 #define YY_USER_ACTION {                        \
     static char RuleNum[4];                     \
     sprintf(RuleNum, "%d", yylineno);           \
-    printCurrentState(yyscanner, RuleNum);      \
+    fprintf(stderr, "%s: <%s>\n", RuleNum, stateToString(YYSTATE)); \
 }
 */
 
@@ -711,30 +710,6 @@ void visitExtAttributes(yyscan_t yyscanner)
 void visitConstructor(yyscan_t yyscanner)
 {
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-}
-
-void printCurrentState(yyscan_t yyscanner, const char* label)
-{
-    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
-    static const char* stateNames[100];
-#define STATE_ENTRY(StateName) stateNames[StateName] = #StateName;
-    STATE_ENTRY(INITIAL);
-    STATE_ENTRY(Comment);
-    STATE_ENTRY(Module);
-    STATE_ENTRY(ModuleBody);
-    STATE_ENTRY(InterfaceDef);
-    STATE_ENTRY(InterfaceBody);
-    STATE_ENTRY(EnumDef);
-    STATE_ENTRY(EnumBody);
-    STATE_ENTRY(ExtendedAttributes);
-    STATE_ENTRY(Attribute);
-    STATE_ENTRY(DictionaryDef);
-    STATE_ENTRY(DictionaryBody);
-    STATE_ENTRY(Operation);
-    STATE_ENTRY(Constructor);
-    STATE_ENTRY(Typedef);
-#undef STATE_ENTRY
-    fprintf(stderr, "%s: <%s>\n", label, stateNames[YYSTATE]);
 }
 
 void WebIDLOutlineParser::parseInput(
