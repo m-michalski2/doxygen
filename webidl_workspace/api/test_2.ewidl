@@ -50,7 +50,14 @@
          * \version 5.0
          */
         [
-            Constructor(int, int),
+            /**
+             * \brief Constructor with two args.
+             */
+            Constructor(int xx, int yy),
+
+            /**
+             * \brief Constructor with no args.
+             */
             Constructor()
         ]
         interface GoodbyeWorld : HelloWorld {

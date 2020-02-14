@@ -42,7 +42,6 @@ struct widlscannerYY_state
     std::vector<std::string> extendedAttributes;
 
     std::string baseInterface;
-    std::string interfaceName;
     std::vector<std::shared_ptr<Entry>> constructors;
 
     bool readonlyAttribute;
@@ -67,18 +66,18 @@ static const char* stateToString(int);
 }
 */
 
+#define IMPORT_FLEX_INTERFACE \
+    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner
+
 void setEntryDoc(yyscan_t yyscanner, std::shared_ptr<Entry> entry);
 std::string getCurrentScope(const std::vector<std::string>& scope);
 
-std::string getArgName(std::string code) {
-    int pos = code.rfind(" ");
-    return code.substr(pos, code.size() - pos);
-}
-
-std::string getArgType(std::string code) {
-    int pos = code.rfind(" ");
-    return code.substr(0, pos);
-}
+void exitSubtree(yyscan_t yyscanner);
+void enterSubtree(yyscan_t yyscanner, std::shared_ptr<Entry> newRoot);
+void resetCurrentEntry(yyscan_t yyscanner);
+std::string getArgType(std::string code);
+std::string getArgName(std::string code);
+void endDefinition(yyscan_t yyscanner);
 
 %}
 
@@ -205,22 +204,31 @@ STRING \"([^\\\"]|\\.)*\"
 
 <Module>{
     {IDENTIFIER} {
-        auto entry = std::make_shared<Entry>();
-        entry->name = (getCurrentScope(yyextra->currentScope) + yytext).c_str();
-        yyextra->currentScope.push_back(yytext);
-        entry->type = "namespace";
-        entry->fileName = yyextra->fileName;
-        entry->section = Entry::NAMESPACE_SEC;
-        entry->lang = SrcLangExt_WebIDL;
-        yyextra->currentRoot->moveToSubEntryAndKeep(entry);
-        setEntryDoc(yyscanner, entry);
-        yyextra->currentRoot = entry;
+        //Doxygen::docGroup.enterCompound(yyextra->fileName, yylineno, yytext);
+        //auto entry = std::make_shared<Entry>();
+        //entry->name = yytext;
+        //yyextra->currentScope.push_back(yytext);
+        //entry->type = "namespace";
+        //entry->fileName = yyextra->fileName;
+        //entry->section = Entry::NAMESPACE_SEC;
+        //entry->lang = SrcLangExt_WebIDL;
+        //yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+        //setEntryDoc(yyscanner, entry);
+        //yyextra->currentRoot = entry;
+        yyextra->currentRoot->name = yytext;
+        yyextra->currentRoot->fileName = yyextra->fileName;
+        yyextra->currentRoot->lang = SrcLangExt_WebIDL;
+        yyextra->lastComment += std::string("\n\\file ") + yyextra->fileName;
+        setEntryDoc(yyscanner, yyextra->currentRoot);
         yy_push_state(ModuleBody, yyscanner);
     }
 
     ";" {
         yy_pop_state(yyscanner);
-        yyextra->currentScope.pop_back();
+        //yyextra->currentScope.pop_back();
+        //Doxygen::docGroup.leaveCompound(yyextra->fileName, yylineno, yyextra->currentRoot->name);
+        //yyextra->currentRoot = yyextra->parent;
+        //endDefinition(yyscanner);
         BEGIN(INITIAL);
     }
 }
@@ -282,17 +290,19 @@ STRING \"([^\\\"]|\\.)*\"
         setEntryDoc(yyscanner, entry);
         yyextra->typeDef.clear();
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
+        endDefinition(yyscanner);
         yy_pop_state(yyscanner);
     }
 }
 
 <EnumDef>{
     {IDENTIFIER} {
+        Doxygen::docGroup.enterCompound(yyextra->fileName, yylineno, yytext);
         yyextra->parent = yyextra->currentRoot;
         auto entry = std::make_shared<Entry>();
         entry->type = "enum";
         entry->fileName = yyextra->fileName;
-        entry->name = (getCurrentScope(yyextra->currentScope) + yytext).c_str();
+        entry->name = yytext;
         entry->section = Entry::ENUM_SEC;
         entry->lang = SrcLangExt_WebIDL;
         entry->spec = Entry::Enum | Entry::Strong;
@@ -305,7 +315,9 @@ STRING \"([^\\\"]|\\.)*\"
 
     ";" {
         yy_pop_state(yyscanner);
+        Doxygen::docGroup.leaveCompound(yyextra->fileName, yylineno, yyextra->currentRoot->name);
         yyextra->currentRoot = yyextra->parent;
+        endDefinition(yyscanner);
     }
 
     "{" {
@@ -337,24 +349,17 @@ STRING \"([^\\\"]|\\.)*\"
 
 <InterfaceDef>{
     {IDENTIFIER} {
-        yyextra->interfaceName = yytext;
+        Doxygen::docGroup.enterCompound(yyextra->fileName, yylineno, yytext);
         yyextra->currentScope.push_back(yytext);
-
-        yyextra->interfaceName = getCurrentScope(yyextra->currentScope);
-        yyextra->interfaceName.pop_back();
-        yyextra->interfaceName.pop_back();
-
+        std::string interfaceName = yyextra->currentScope.back();
         auto entry = std::make_shared<Entry>();
         entry->type = "interface";
         entry->fileName = yyextra->fileName;
-        entry->name = yyextra->interfaceName.c_str();
+        entry->name = interfaceName.c_str();
         entry->section = Entry::CLASS_SEC;
         entry->lang = SrcLangExt_WebIDL;
         entry->spec = Entry::Interface;
         entry->proto = TRUE;
-        entry->extends.push_back(
-            BaseInfo(QCString("Tizen::") + yyextra->baseInterface.c_str(), Public, Normal)
-        );
 
         setEntryDoc(yyscanner, entry);
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
@@ -373,7 +378,10 @@ STRING \"([^\\\"]|\\.)*\"
     ":"{BB}{IDENTIFIER} {
         std::string name = yytext;
         auto beg = std::find_if(begin(name), end(name), (int(*)(int))std::isalnum);
-        yyextra->baseInterface = std::string(beg, name.end());
+        std::string baseInterface = std::string(beg, name.end());
+        yyextra->currentRoot->extends.push_back(
+            BaseInfo(baseInterface.c_str(), Public, Normal)
+        );
     }
 
     "{" {
@@ -385,7 +393,8 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->currentRoot = yyextra->parent;
         yyextra->currentScope.pop_back();
         yyextra->baseInterface.clear();
-        yyextra->interfaceName.clear();
+        Doxygen::docGroup.leaveCompound(yyextra->fileName, yylineno, yyextra->currentRoot->name);
+        endDefinition(yyscanner);
     }
 }
 
@@ -432,6 +441,7 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->currentRoot->moveToSubEntryAndKeep(entry);
 
         yy_pop_state(yyscanner);
+        endDefinition(yyscanner);
     }
 
     {IDENTIFIER}{BB}{ARGLIST}|{IDENTIFIER}{BB}{MLARGLIST} {
@@ -484,6 +494,7 @@ STRING \"([^\\\"]|\\.)*\"
         yyextra->lastComment.clear();
         yyextra->defaultVal.clear();
         yy_pop_state(yyscanner);
+        endDefinition(yyscanner);
     }
 
     {IDENTIFIER}|"[]"|"?"|"("|")" {
@@ -504,7 +515,7 @@ STRING \"([^\\\"]|\\.)*\"
         std::shared_ptr<Entry> entry = std::make_shared<Entry>();
         entry->type = "dictionary";
         entry->fileName = yyextra->fileName;
-        entry->name = (getCurrentScope(yyextra->currentScope) + yytext).c_str();
+        entry->name = yytext;
         entry->section = Entry::CLASS_SEC;
         entry->lang = SrcLangExt_WebIDL;
         entry->spec = Entry::Dictionary;
@@ -517,6 +528,7 @@ STRING \"([^\\\"]|\\.)*\"
 
     ";" {
         yy_pop_state(yyscanner);
+        endDefinition(yyscanner);
     }
 
     "{" {
@@ -567,7 +579,7 @@ WebIDLOutlineParser::~WebIDLOutlineParser()
 
 void setEntryDoc(yyscan_t yyscanner, std::shared_ptr<Entry> entry)
 {
-    struct yyguts_t *yyg = (struct yyguts_t*)yyscanner;
+    IMPORT_FLEX_INTERFACE;
     auto protection = Public;
     int position = 0;
     bool needsEntry = false;
@@ -595,6 +607,51 @@ std::string getCurrentScope(const std::vector<std::string>& scope)
     return oss.str();
 }
 
+std::string getArgName(std::string code) {
+    int pos = code.rfind(" ");
+    return code.substr(pos, code.size() - pos);
+}
+
+std::string getArgType(std::string code) {
+    int pos = code.rfind(" ");
+    return code.substr(0, pos);
+}
+
+void resetCurrentEntry(yyscan_t yyscanner) {
+    IMPORT_FLEX_INTERFACE;
+    yyextra->currentEntry = std::make_shared<Entry>();
+    Doxygen::docGroup.initGroupInfo(yyextra->currentEntry.get());
+}
+
+void enterSubtree(yyscan_t yyscanner, std::shared_ptr<Entry> newRoot) {
+    IMPORT_FLEX_INTERFACE;
+    yyextra->currentRoot = newRoot;
+}
+
+void exitSubtree(yyscan_t yyscanner) {
+    IMPORT_FLEX_INTERFACE;
+    yyextra->currentRoot.reset(yyextra->currentRoot->parent());
+}
+
+void endDefinition(yyscan_t yyscanner) {
+    IMPORT_FLEX_INTERFACE;
+    yyextra->lastComment.clear();
+    yyextra->extendedAttributes.clear();
+    yyextra->constructors.clear();
+    yyextra->baseInterface.clear();
+    yyextra->readonlyAttribute = false;
+    yyextra->attribute.clear();
+    yyextra->attributeRaises.clear();
+    yyextra->defaultVal.clear();
+    yyextra->typeDef.clear();
+    yyextra->arguments.clear();
+    yyextra->operation.clear();
+    yyextra->operationArgs.clear();
+    yyextra->operationRaises.clear();
+    resetCurrentEntry(yyscanner);
+}
+
+
 void WebIDLOutlineParser::parseInput(
     const char *fileName,
     const char *fileBuf,
@@ -602,12 +659,14 @@ void WebIDLOutlineParser::parseInput(
     bool,
     QStrList&)
 {
-    struct yyguts_t *yyg = (struct yyguts_t*)p->yyscanner;
+    auto& yyscanner = p->yyscanner;
+    IMPORT_FLEX_INTERFACE;
     printlex(1, TRUE, __FILE__, fileName);
 
     yyextra->parser = this;
     yyextra->fileName = fileName;
     yyextra->currentRoot = root;
+    endDefinition(yyscanner);
 
     Doxygen::docGroup.enterFile(fileName, 0);
 
