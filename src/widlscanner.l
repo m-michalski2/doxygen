@@ -21,6 +21,7 @@
 #include "doxygen.h"
 #include "commentscan.h"
 #include "types.h"
+#include "arguments.h"
 
 #include "widlscanner.h"
 #include "widlcode.h"
@@ -57,14 +58,14 @@ struct widlscannerYY_state
     std::string operationArgs;
 };
 
-/*
-static const char* stateToString(int);
-#define YY_USER_ACTION {                        \
-    static char RuleNum[4];                     \
-    sprintf(RuleNum, "%d", yylineno);           \
-    fprintf(stderr, "%s: <%s>\n", RuleNum, stateToString(YYSTATE)); \
-}
-*/
+
+// static const char* stateToString(int);
+// #define YY_USER_ACTION {                        \
+//     static char RuleNum[4];                     \
+//     sprintf(RuleNum, "%d", yylineno);           \
+//     fprintf(stderr, "%s: <%s>\n", RuleNum, stateToString(YYSTATE)); \
+// }
+
 
 #define IMPORT_FLEX_INTERFACE \
     struct yyguts_t *yyg = (struct yyguts_t*)yyscanner
@@ -77,6 +78,7 @@ void enterSubtree(yyscan_t yyscanner, std::shared_ptr<Entry> newRoot);
 void resetCurrentEntry(yyscan_t yyscanner);
 std::string getArgType(std::string code);
 std::string getArgName(std::string code);
+std::string getArgList(std::vector<Argument> al);
 void endDefinition(yyscan_t yyscanner);
 
 %}
@@ -104,6 +106,12 @@ IDENTIFIER [a-zA-Z_][a-zA-Z0-9_]*
 ARGLIST \(.*\)
 MLARGLIST \(.*\n.*\)
 STRING \"([^\\\"]|\\.)*\"
+
+NUMBER_TYPE ("unsigned")?("short"|"long"|"long long"|"float"|"double")
+NON_NUMBER_TYPE ("any")|[a-zA-Z_][a-zA-Z0-9_]*
+SIMPLE_TYPE ("const")?{NUMBER_TYPE}|{NON_NUMBER_TYPE}("[]"|"?")?
+
+RAISES ("raises"){BB}\(.*\)
 
 %%
 
@@ -194,6 +202,11 @@ STRING \"([^\\\"]|\\.)*\"
 
     [^,)]+ {
         std::string argument = yytext;
+        Argument arg;
+        arg.type = getArgType(argument).c_str();
+        arg.name = getArgName(argument).c_str();
+        yyextra->currentEntry->argList.push_back(arg);
+
         yyextra->arguments.push_back(argument);
     }
 
@@ -259,19 +272,7 @@ STRING \"([^\\\"]|\\.)*\"
 }
 
 <Typedef>{
-    {IDENTIFIER} {
-        yyextra->typeDef.push_back(yytext);
-    }
-
-    "[]" {
-        yyextra->typeDef.push_back(yytext);
-    }
-
-    "?" {
-        yyextra->typeDef.push_back(yytext);
-    }
-
-    "("|")" {
+    {SIMPLE_TYPE} {
         yyextra->typeDef.push_back(yytext);
     }
 
@@ -413,54 +414,31 @@ STRING \"([^\\\"]|\\.)*\"
         yy_push_state(Attribute, yyscanner);
     }
 
-    {IDENTIFIER}|"(" {
-        yyextra->operation.push_back(yytext);
+    {SIMPLE_TYPE}|"(" {
+        yyextra->currentEntry->section = Entry::FUNCTION_SEC;
+        yyextra->currentEntry->type = yytext;
+        yyextra->currentEntry->mtype = Method;
         yy_push_state(Operation, yyscanner);
     }
 }
 
 <Operation>{
     ";" {
-        auto entry = std::make_shared<Entry>();
-        entry->section = Entry::FUNCTION_SEC;
-        entry->name = yyextra->operation.back().c_str();
-        entry->args = yyextra->operationArgs.c_str();
-        entry->exception = yyextra->operationRaises.c_str();
-        std::ostringstream returnType;
-        for (size_t i=0; i<yyextra->operation.size() - 1; ++i) {
-            returnType << yyextra->operation[i] << " ";
-        }
-
-        entry->type = returnType.str().c_str();
-        entry->mtype = Method;
-        setEntryDoc(yyscanner, entry);
-        yyextra->operation.clear();
-        yyextra->operationArgs.clear();
-        yyextra->operationRaises.clear();
-
-        yyextra->currentRoot->moveToSubEntryAndKeep(entry);
-
+        yyextra->currentEntry->args = getArgList(yyextra->currentEntry->argList).c_str();
+        setEntryDoc(yyscanner, yyextra->currentEntry);
+        yyextra->currentRoot->moveToSubEntryAndKeep(yyextra->currentEntry);
         yy_pop_state(yyscanner);
         endDefinition(yyscanner);
     }
 
-    {IDENTIFIER}{BB}{ARGLIST}|{IDENTIFIER}{BB}{MLARGLIST} {
-        std::string str = yytext;
-        int argPos = str.find("(");
-        yyextra->operation.push_back(str.substr(0, argPos));
-        std::string args = str.substr(argPos, str.size() - argPos);
-        if (std::string::npos == args.find("raises")) {
-            yyextra->operationArgs = args;
-        }
-        else {
-            int raisesPos = args.find("raises");
-            yyextra->operationArgs = args.substr(0, raisesPos);
-            yyextra->operationRaises = args.substr(raisesPos, args.size() - raisesPos);
-        }
+    {RAISES} {
+        yyextra->currentEntry->exception = yytext;
     }
 
-    {IDENTIFIER}|"[]"|"?"|"("|")" {
-        yyextra->operation.push_back(yytext);
+    {IDENTIFIER}"(" {
+        std::string s = yytext;
+        yyextra->currentEntry->name = s.substr(0, s.size() - 1).c_str();
+        yy_push_state(ArgumentList, yyscanner);
     }
 }
 
@@ -615,6 +593,17 @@ std::string getArgName(std::string code) {
 std::string getArgType(std::string code) {
     int pos = code.rfind(" ");
     return code.substr(0, pos);
+}
+
+std::string getArgList(std::vector<Argument> al) {
+    std::string ret = "(";
+    int alSize = al.size();
+    for (int i = 0; i < alSize; i++) {
+        ret += al[i].type + al[i].name;
+        if (i < alSize - 1)
+            ret += ", ";
+    }
+    return ret + ")";
 }
 
 void resetCurrentEntry(yyscan_t yyscanner) {
